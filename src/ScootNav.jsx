@@ -1,16 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User } from 'lucide-react';
-
-// We gebruiken een simpele SVG kaart ipv externe libraries om errors te voorkomen
-// Dit simuleert een route in een abstracte wijk
-const ROUTE_POINTS = [
-  { x: 20, y: 80 },  // Start
-  { x: 30, y: 70 },
-  { x: 30, y: 50 },
-  { x: 50, y: 40 },
-  { x: 70, y: 40 },
-  { x: 80, y: 20 }   // Eind
-];
+import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2 } from 'lucide-react';
+import RealMap from './RealMap';
+import { useLocation } from './useLocation';
+import { searchAddress, reverseGeocode, fetchRoute } from './services';
+import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, instructionText, lowerFirst } from './geo';
 
 // Instellingen worden in de browser bewaard (localStorage)
 const STORAGE_KEY = 'scootnav-instellingen';
@@ -25,6 +18,14 @@ const DEFAULT_SETTINGS = {
   vehicleType: 'scootmobiel'
 };
 
+// Gemiddelde rijsnelheid (km/u) voor de verwachte reistijd
+const TRAVEL_SPEED = { scootmobiel: 10, fiets: 18 };
+
+// Demo-rit: rijdt met 15 km/u, 3x versneld afgespeeld
+const DEMO_SPEED_KMH = 15;
+const DEMO_SPEEDUP = 3;
+const DEMO_TICK_MS = 250;
+
 const loadSettings = () => {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -34,88 +35,20 @@ const loadSettings = () => {
   }
 };
 
-// Telefoonnummer geschikt maken voor een tel:-link (alleen cijfers en +)
-const toTelHref = (phone) => `tel:${phone.replace(/[^\d+]/g, '')}`;
+// Telefoonnummer geschikt maken voor een tel:- of sms:-link (alleen cijfers en +)
+const cleanPhone = (phone) => phone.replace(/[^\d+]/g, '');
+const toTelHref = (phone) => `tel:${cleanPhone(phone)}`;
 
-// Helper om punt op lijnstuk te vinden
-const getPointOnLine = (p1, p2, t) => ({
-  x: p1.x + (p2.x - p1.x) * t,
-  y: p1.y + (p2.y - p1.y) * t
-});
+const osmLink = (p) => `https://www.openstreetmap.org/?mlat=${p.lat.toFixed(6)}&mlon=${p.lng.toFixed(6)}#map=18/${p.lat.toFixed(6)}/${p.lng.toFixed(6)}`;
 
-const SimpleMap = ({ isNavigating, progress }) => {
-  // Bereken huidige positie op basis van progress (0-100)
-  const totalSegments = ROUTE_POINTS.length - 1;
-  const segmentProgress = 100 / totalSegments;
-  
-  let currentPos = ROUTE_POINTS[0];
-  
-  if (isNavigating && progress > 0) {
-    const currentSegmentIndex = Math.min(
-      Math.floor(progress / segmentProgress), 
-      totalSegments - 1
-    );
-    const segmentPercent = (progress % segmentProgress) / segmentProgress;
-    
-    currentPos = getPointOnLine(
-      ROUTE_POINTS[currentSegmentIndex],
-      ROUTE_POINTS[currentSegmentIndex + 1],
-      segmentPercent
-    );
-  }
-
-  return (
-    <div className="w-full h-full bg-slate-100 relative overflow-hidden">
-      {/* Achtergrond stratenpatroon (decoratief) */}
-      <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none">
-        <pattern id="grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="black" strokeWidth="1"/>
-        </pattern>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-      </svg>
-
-      {/* De Kaart */}
-      <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {/* Park gebied */}
-        <path d="M 70 10 L 90 10 L 90 30 L 70 30 Z" fill="#bbf7d0" stroke="none" />
-        
-        {/* Gebouwen (abstract) */}
-        <rect x="10" y="75" width="10" height="10" fill="#e2e8f0" />
-        <rect x="40" y="20" width="15" height="15" fill="#e2e8f0" />
-        
-        {/* De Route Lijn */}
-        <polyline 
-          points={ROUTE_POINTS.map(p => `${p.x},${p.y}`).join(' ')} 
-          fill="none" 
-          stroke={isNavigating ? "#3b82f6" : "#94a3b8"} 
-          strokeWidth="3" 
-          strokeLinecap="round" 
-          strokeLinejoin="round"
-          className="transition-colors duration-500"
-        />
-
-        {/* Start Punt */}
-        <circle cx={ROUTE_POINTS[0].x} cy={ROUTE_POINTS[0].y} r="2" fill="#22c55e" />
-        
-        {/* Eind Punt */}
-        <circle cx={ROUTE_POINTS[ROUTE_POINTS.length-1].x} cy={ROUTE_POINTS[ROUTE_POINTS.length-1].y} r="2" fill="#ef4444" />
-
-        {/* Huidige Positie Marker (De Scootmobiel) */}
-        <g transform={`translate(${currentPos.x}, ${currentPos.y})`}>
-          <circle r="4" fill="#2563eb" stroke="white" strokeWidth="1.5" className="shadow-lg drop-shadow-md" />
-          <circle r="8" fill="#2563eb" opacity="0.2" className="animate-ping" />
-        </g>
-      </svg>
-
-      {/* Straatnamen (statisch) */}
-      <div className="absolute top-[80%] left-[10%] text-[10px] text-slate-500 font-bold rotate-45">Dorpsstraat</div>
-      <div className="absolute top-[40%] left-[50%] text-[10px] text-slate-500 font-bold">Kerkplein</div>
-      <div className="absolute top-[20%] right-[10%] text-[10px] text-green-600 font-bold">Het Park</div>
-    </div>
-  );
+const LOCATION_MESSAGES = {
+  zoeken: 'Locatie wordt gezocht…',
+  geweigerd: 'Geen toegang tot uw locatie. Sta locatie toe in de instellingen van uw browser.',
+  'niet-beschikbaar': 'Locatie is hier niet beschikbaar. Open de app via https of op dit apparaat zelf.',
+  fout: 'Uw locatie kon niet worden bepaald. Ga eventueel even naar buiten.'
 };
 
-const BigButton = ({ icon: Icon, label, onClick, color = "blue", fullWidth = false }) => {
+const BigButton = ({ icon: Icon, label, onClick, color = "blue", fullWidth = false, disabled = false }) => {
   const colorClasses = {
     blue: "bg-blue-600 hover:bg-blue-700 text-white",
     red: "bg-red-600 hover:bg-red-700 text-white",
@@ -126,8 +59,9 @@ const BigButton = ({ icon: Icon, label, onClick, color = "blue", fullWidth = fal
   return (
     <button
       onClick={onClick}
-      className={`${colorClasses[color]} ${fullWidth ? 'w-full' : 'flex-1'} 
-      p-4 rounded-xl shadow-md transition-transform active:scale-95 flex flex-col items-center justify-center gap-2 min-h-[100px]`}
+      disabled={disabled}
+      className={`${colorClasses[color]} ${fullWidth ? 'w-full' : 'flex-1'}
+      p-4 rounded-xl shadow-md transition-transform active:scale-95 flex flex-col items-center justify-center gap-2 min-h-[100px] disabled:opacity-50`}
     >
       <Icon size={40} strokeWidth={2} />
       <span className="text-lg font-bold">{label}</span>
@@ -137,12 +71,9 @@ const BigButton = ({ icon: Icon, label, onClick, color = "blue", fullWidth = fal
 
 export default function ScootNavApp() {
   const [view, setView] = useState('home'); // home, map, settings, sos
-  const [isNavigating, setIsNavigating] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState(85);
-  const [speed, setSpeed] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [showExitModal, setShowExitModal] = useState(false);
-  
+
   // Persoonlijke instellingen (worden bewaard in de browser)
   const [saved] = useState(loadSettings);
   const [homeAddress, setHomeAddress] = useState(saved.homeAddress);
@@ -151,6 +82,25 @@ export default function ScootNavApp() {
   const [textScale, setTextScale] = useState(saved.textScale);
   const [voiceEnabled, setVoiceEnabled] = useState(saved.voiceEnabled);
   const [vehicleType, setVehicleType] = useState(saved.vehicleType);
+
+  // Locatie, zoeken en route
+  const gps = useLocation();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [destination, setDestination] = useState(null);
+  const [route, setRoute] = useState(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [follow, setFollow] = useState(true);
+  const [demo, setDemo] = useState(false);
+  const [demoPos, setDemoPos] = useState(null);
+  const [sosAddress, setSosAddress] = useState('');
+
+  // Tijdens de demo-rit volgt de app de nagespeelde plek in plaats van de GPS
+  const position = demo ? demoPos : gps.position;
+  const speed = isNavigating && position ? Math.round(demo ? DEMO_SPEED_KMH : (position.speed || 0)) : 0;
 
   // Instellingen automatisch bewaren bij elke wijziging
   useEffect(() => {
@@ -197,57 +147,199 @@ export default function ScootNavApp() {
     }
   };
 
-  // Halverwege de route de afslag aankondigen
+  // Accu: er is (nog) geen koppeling met de scootmobiel, dus dit is een schatting
   useEffect(() => {
-    if (isNavigating && progress === 40) say("Over 50 meter rechtsaf");
-  }, [isNavigating, progress]);
+    if (!isNavigating) return;
+    const id = setInterval(() => setBatteryLevel(prev => Math.max(0, prev - 0.1)), 3000);
+    return () => clearInterval(id);
+  }, [isNavigating]);
 
-  // Simulatie interval
-  useEffect(() => {
-    let interval;
-    if (isNavigating && progress < 100) {
-      interval = setInterval(() => {
-        setSpeed(Math.floor(Math.random() * (18 - 12) + 12)); // Snelheid tussen 12-18 km/u
-        setBatteryLevel(prev => Math.max(0, prev - 0.1));
-        
-        setProgress(prev => {
-          const next = prev + 1; // 1% per tick
-          if (next >= 100) {
-            return 100;
-          }
-          return next;
-        });
-      }, 100); // Snellere update voor vloeiendere beweging
-    } else if (progress >= 100 && isNavigating) {
-      setSpeed(0);
-      setIsNavigating(false);
-      setProgress(0);
-      // Gebruik timeout om alert uit de render loop te halen
-      say("U bent op uw bestemming");
-      setTimeout(() => alert("Bestemming bereikt!"), 100);
-    } else {
-      setSpeed(0);
-    }
-    return () => clearInterval(interval);
-  }, [isNavigating, progress]);
+  // Vertrekpunt: de eigen locatie, of het thuisadres als de locatie onbekend is
+  const getStart = async () => {
+    if (gps.position) return { point: gps.position, fromHome: false };
+    const found = await searchAddress(homeAddress);
+    if (!found.length) throw new Error('Uw locatie is onbekend en uw thuisadres is niet gevonden. Controleer het thuisadres bij Instellingen.');
+    return { point: found[0], fromHome: true };
+  };
 
-  const toggleNavigation = () => {
-    if (isNavigating) {
-      setShowExitModal(true);
-    } else {
-      setIsNavigating(true);
-      setProgress(0);
-      setView('map');
-      say("Route gestart. Rijd rechtdoor.");
+  const planRoute = async (dest) => {
+    setBusy(true);
+    setMessage('');
+    setResults(null);
+    try {
+      const { point, fromHome } = await getStart();
+      const r = await fetchRoute(point, dest, vehicleType);
+      setDestination(dest);
+      setRoute({ ...r, start: point });
+      setStepIndex(0);
+      setFollow(false);
+      if (fromHome) setMessage('Uw locatie is onbekend. De route start daarom bij uw thuisadres.');
+      return r;
+    } catch (e) {
+      setMessage(e.message || 'Er ging iets mis. Probeer het opnieuw.');
+      return null;
+    } finally {
+      setBusy(false);
     }
   };
 
-  const confirmStop = () => {
-    say("Route gestopt");
+  const onSearch = async (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const found = await searchAddress(query.trim(), gps.position);
+      setResults(found);
+      if (!found.length) setMessage('Geen adres gevonden. Probeer straat en plaats, bijvoorbeeld "Markt 1, Gouda".');
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Navigatie bijhouden: stappen, aankondigingen, aankomst en omrijden
+  const announced = useRef({});
+  const minDistToNext = useRef(Infinity);
+  const lastReroute = useRef(0);
+
+  const startNavigation = (r = route, asDemo = false) => {
+    if (!r) return;
+    announced.current = {};
+    minDistToNext.current = Infinity;
+    setStepIndex(0);
+    setDemo(asDemo);
+    setDemoPos(asDemo ? { ...r.coords[0] } : null);
+    setIsNavigating(true);
+    setFollow(true);
+    setView('map');
+    const first = r.steps[1];
+    say(`Route gestart. ${first ? instructionText(first) : ''}`);
+  };
+
+  const finishNavigation = (arrived) => {
     setIsNavigating(false);
-    setSpeed(0);
+    setDemo(false);
+    setDemoPos(null);
     setShowExitModal(false);
-    setProgress(0);
+    setFollow(true);
+    if (arrived) {
+      say("U bent op uw bestemming");
+      setRoute(null);
+      setDestination(null);
+      setTimeout(() => alert("Bestemming bereikt!"), 100);
+    } else {
+      say("Route gestopt");
+    }
+  };
+
+  // Demo-rit: beweeg een nagespeelde plek over de route
+  useEffect(() => {
+    if (!isNavigating || !demo || !route) return;
+    let travelled = 0;
+    const step = (DEMO_SPEED_KMH / 3.6) * (DEMO_TICK_MS / 1000) * DEMO_SPEEDUP;
+    const id = setInterval(() => {
+      travelled += step;
+      setDemoPos({ ...pointAlongRoute(route.coords, travelled), speed: DEMO_SPEED_KMH });
+    }, DEMO_TICK_MS);
+    return () => clearInterval(id);
+  }, [isNavigating, demo, route]);
+
+  useEffect(() => {
+    if (!isNavigating || !route || !position) return;
+
+    // Aangekomen?
+    const end = route.coords[route.coords.length - 1];
+    if (position.done || distance(position, end) < 20) {
+      finishNavigation(true);
+      return;
+    }
+
+    // Volgende afslag bereikt of voorbij? Dan door naar de stap daarna.
+    let idx = stepIndex;
+    const next = route.steps[idx + 1];
+    if (next) {
+      const d = distance(position, next.location);
+      minDistToNext.current = Math.min(minDistToNext.current, d);
+      const passed = minDistToNext.current < 40 && d > minDistToNext.current + 20;
+      if (d < 20 || passed) {
+        idx += 1;
+        minDistToNext.current = Infinity;
+        setStepIndex(idx);
+      }
+    }
+
+    // Aankondigen: eerst bij een nieuwe stap, en nog eens vlak voor de afslag
+    const upcoming = route.steps[idx + 1];
+    if (upcoming && upcoming.maneuver.type !== 'arrive') {
+      const d = distance(position, upcoming.location);
+      const key = `${idx}`;
+      if (!announced.current[key] && idx > 0) {
+        announced.current[key] = 'far';
+        say(`${spokenDistance(d)} ${lowerFirst(instructionText(upcoming))}`);
+      }
+      if (d < 60 && announced.current[key] !== 'near') {
+        announced.current[key] = 'near';
+        say(`${spokenDistance(d)} ${lowerFirst(instructionText(upcoming))}`);
+      }
+    }
+
+    // Van de route af? Dan opnieuw berekenen (hooguit eens per 15 seconden)
+    if (!demo && distanceToRoute(position, route.coords) > 40 && Date.now() - lastReroute.current > 15000) {
+      lastReroute.current = Date.now();
+      say("U bent van de route af. De route wordt opnieuw berekend.");
+      fetchRoute(position, destination, vehicleType)
+        .then((r) => {
+          setRoute({ ...r, start: position });
+          setStepIndex(0);
+          announced.current = {};
+          minDistToNext.current = Infinity;
+        })
+        .catch(() => {});
+    }
+  }, [position, isNavigating]);
+
+  // Huidige instructie en resterende afstand
+  const upcomingStep = route?.steps[stepIndex + 1];
+  const distToUpcoming = upcomingStep && position ? distance(position, upcomingStep.location) : null;
+  const remaining = route && position && upcomingStep
+    ? distToUpcoming + route.steps.slice(stepIndex + 1).reduce((s, st) => s + st.distance, 0)
+    : route?.distance;
+  const minutesFor = (meters) => Math.max(1, Math.round((meters / 1000) / TRAVEL_SPEED[vehicleType] * 60));
+
+  const goHome = async () => {
+    setView('map');
+    setBusy(true);
+    setMessage('');
+    try {
+      const found = await searchAddress(homeAddress, gps.position);
+      if (!found.length) {
+        setMessage('Uw thuisadres is niet gevonden. Controleer het bij Instellingen.');
+        return;
+      }
+      const r = await planRoute({ ...found[0], label: homeAddress });
+      if (r) startNavigation({ ...r, start: gps.position || found[0] });
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Noodknop: adres van de huidige plek opzoeken
+  useEffect(() => {
+    if (view !== 'sos' || !position) return;
+    setSosAddress('');
+    reverseGeocode(position).then(setSosAddress).catch(() => {});
+  }, [view]);
+
+  const clearRoute = () => {
+    setRoute(null);
+    setDestination(null);
+    setResults(null);
+    setMessage('');
+    setFollow(true);
   };
 
   // Views
@@ -264,14 +356,85 @@ export default function ScootNavApp() {
             Bereik: ± {Math.floor(batteryLevel * 0.4)} km
           </div>
         </div>
+        <div className={`mt-3 text-sm font-semibold flex items-center gap-2 ${gps.status === 'ok' ? 'text-green-700' : 'text-amber-700'}`}>
+          <LocateFixed size={18} />
+          {gps.status === 'ok'
+            ? `Locatie gevonden (nauwkeurig tot ± ${Math.round(gps.position.accuracy)} m)`
+            : LOCATION_MESSAGES[gps.status]}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 flex-grow">
         <BigButton icon={MapPin} label="Nieuwe Rit" onClick={() => setView('map')} color="blue" />
-        <BigButton icon={Home} label="Naar Huis" onClick={() => { setView('map'); toggleNavigation(); }} color="green" />
+        <BigButton icon={Home} label="Naar Huis" onClick={goHome} color="green" disabled={isNavigating} />
         <BigButton icon={Settings} label="Instellingen" onClick={() => setView('settings')} color="gray" />
         <BigButton icon={AlertTriangle} label="NOODKNOP" onClick={() => setView('sos')} color="red" />
       </div>
+    </div>
+  );
+
+  const renderPlanner = () => (
+    <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+      {!route && (
+        <form onSubmit={onSearch} className="relative">
+          <Search className="absolute left-3 top-4 text-slate-400" size={24} />
+          <input
+            id="bestemming"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Waar wilt u heen?"
+            enterKeyHint="search"
+            className="w-full pl-12 pr-24 py-4 text-lg border-2 border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+          />
+          <button type="submit" disabled={busy} className="absolute right-2 top-2 bottom-2 px-4 bg-blue-600 text-white rounded-lg font-bold disabled:opacity-50">
+            Zoek
+          </button>
+        </form>
+      )}
+
+      {busy && (
+        <div className="flex items-center gap-2 text-slate-600 font-semibold">
+          <Loader2 size={20} className="animate-spin" /> Even geduld…
+        </div>
+      )}
+
+      {message && <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 font-medium">{message}</p>}
+
+      {results && results.length > 0 && !route && (
+        <ul className="divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
+          {results.map((r, i) => (
+            <li key={i}>
+              <button onClick={() => planRoute(r)} className="w-full text-left p-3 flex gap-3 items-start hover:bg-slate-50 active:bg-slate-100">
+                <MapPin size={22} className="text-red-500 shrink-0 mt-0.5" />
+                <span className="font-medium text-slate-800">{r.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {route && (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <MapPin size={26} className="text-red-500 shrink-0 mt-1" />
+            <div className="flex-grow min-w-0">
+              <div className="font-bold text-lg leading-tight break-words">{destination?.label}</div>
+              <div className="text-slate-600 font-semibold mt-1">
+                {formatDistance(route.distance)} · ± {minutesFor(route.distance)} min
+              </div>
+            </div>
+            <button onClick={clearRoute} aria-label="Andere bestemming" className="p-2 bg-slate-100 rounded-full shrink-0">
+              <X size={22} />
+            </button>
+          </div>
+          <BigButton label="Start Route" icon={Navigation} onClick={() => startNavigation(route, false)} fullWidth color="blue" disabled={!gps.position} />
+          {!gps.position && <p className="text-sm text-slate-600">Starten kan zodra uw locatie bekend is. Probeer intussen de demo-rit.</p>}
+          <button onClick={() => startNavigation(route, true)} className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2">
+            <Play size={20} /> Demo-rit (zonder rijden)
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -279,49 +442,70 @@ export default function ScootNavApp() {
     <div className="relative h-full w-full flex flex-col bg-slate-100">
       {/* Top Bar Overlay */}
       <div className="absolute top-0 left-0 right-0 z-[20] bg-white/90 backdrop-blur-sm p-2 shadow-md flex justify-between items-center px-4">
-        <button onClick={() => setView('home')} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+        <button onClick={() => setView('home')} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200" aria-label="Naar menu">
           <Home size={24} className="text-slate-700" />
         </button>
         <div className="text-xl font-bold text-slate-800">
-          {isNavigating ? "Onderweg..." : "Kies Bestemming"}
+          {isNavigating ? (demo ? "Demo-rit" : "Onderweg") : "Kies Bestemming"}
         </div>
         <div className={`font-bold ${batteryLevel < 20 ? 'text-red-600' : 'text-green-600'}`}>
           {Math.floor(batteryLevel)}%
         </div>
       </div>
 
-      {/* Map */}
-      <div className="flex-grow relative z-10">
-        <SimpleMap isNavigating={isNavigating} progress={progress} />
+      {/* Instructiebalk tijdens het rijden */}
+      {isNavigating && upcomingStep && (
+        <div className="absolute top-16 left-2 right-2 z-[20] bg-blue-700 text-white rounded-xl shadow-lg p-3 flex items-center gap-3">
+          <Navigation size={36} className="shrink-0" />
+          <div className="min-w-0">
+            <div className="text-2xl font-bold leading-tight">{formatDistance(distToUpcoming)}</div>
+            <div className="text-lg font-semibold leading-tight break-words">{instructionText(upcomingStep)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Kaart */}
+      <div className="flex-grow relative isolate">
+        <RealMap
+          position={position}
+          route={route}
+          destination={destination}
+          follow={follow}
+          setFollow={setFollow}
+          isNavigating={isNavigating}
+        />
+        {!follow && position && (
+          <button
+            onClick={() => setFollow(true)}
+            aria-label="Naar mijn locatie"
+            className={`absolute right-3 z-[500] bg-white p-3 rounded-full shadow-lg ${isNavigating ? 'bottom-28' : 'bottom-3'}`}
+          >
+            <LocateFixed size={28} className="text-blue-600" />
+          </button>
+        )}
+        {!position && gps.status !== 'ok' && !demo && (
+          <div className="absolute left-2 right-2 top-16 z-[500] bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 font-medium shadow">
+            {LOCATION_MESSAGES[gps.status]}
+          </div>
+        )}
       </div>
 
-      {/* Bottom Dashboard Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 z-[20] bg-white border-t-2 border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        {!isNavigating ? (
-          <div className="p-4 space-y-3">
-             <div className="relative">
-                <Search className="absolute left-3 top-3.5 text-slate-400" size={24} />
-                <input 
-                  type="text" 
-                  placeholder="Waar wilt u heen?" 
-                  className="w-full pl-12 pr-4 py-4 text-lg border-2 border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
-                />
-             </div>
-             <BigButton label="Start Navigatie Demo" icon={Navigation} onClick={toggleNavigation} fullWidth color="blue" />
-          </div>
-        ) : (
-          <div className="flex flex-row items-center justify-between p-4 bg-slate-50">
+      {/* Bottom Dashboard */}
+      <div className="relative z-[20] bg-white border-t-2 border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        {!isNavigating ? renderPlanner() : (
+          <div className="flex flex-row items-center justify-between p-4 bg-slate-50 gap-2">
             <div className="flex flex-col items-center w-24">
                <span className="text-slate-500 font-semibold text-xs uppercase">Snelheid</span>
-               <span className="text-3xl font-bold text-slate-800">{speed} <span className="text-sm">km/u</span></span>
+               <span className="text-3xl font-bold text-slate-800 tabular-nums">{speed} <span className="text-sm">km/u</span></span>
             </div>
 
-            <div className="flex flex-col items-center px-4 border-l border-r border-slate-200 flex-grow">
-               <Navigation size={40} className="text-blue-600 mb-1" />
-               <span className="text-xl font-bold text-center leading-tight">Over 50m<br/>rechtsaf</span>
+            <div className="flex flex-col items-center px-2 border-l border-r border-slate-200 flex-grow">
+               <span className="text-slate-500 font-semibold text-xs uppercase">Nog te gaan</span>
+               <span className="text-2xl font-bold tabular-nums">{formatDistance(remaining)}</span>
+               <span className="text-slate-600 font-semibold text-sm">± {minutesFor(remaining || 0)} min</span>
             </div>
 
-            <button 
+            <button
               onClick={() => setShowExitModal(true)}
               className="bg-red-100 text-red-700 p-3 rounded-xl font-bold flex flex-col items-center justify-center h-full active:bg-red-200 min-w-[80px]"
             >
@@ -338,7 +522,7 @@ export default function ScootNavApp() {
             <h3 className="text-2xl font-bold mb-4">Route stoppen?</h3>
             <div className="flex gap-4">
               <button onClick={() => setShowExitModal(false)} className="flex-1 py-4 bg-slate-200 rounded-xl font-bold text-lg">Nee, doorgaan</button>
-              <button onClick={confirmStop} className="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold text-lg">Ja, stop</button>
+              <button onClick={() => finishNavigation(false)} className="flex-1 py-4 bg-red-600 text-white rounded-xl font-bold text-lg">Ja, stop</button>
             </div>
           </div>
         </div>
@@ -351,9 +535,19 @@ export default function ScootNavApp() {
       <h2 className="text-3xl font-bold text-red-700 text-center mb-8">NOOD OPROEP</h2>
       
       <div className="bg-white p-6 rounded-2xl shadow-md mb-6 text-center border-2 border-red-100">
-        <p className="text-slate-600 text-lg mb-2">Uw locatie wordt gedeeld met:</p>
+        <p className="text-slate-600 text-lg mb-2">Uw noodcontact:</p>
         <p className="text-2xl font-bold text-slate-900">{contactName}</p>
-        <p className="text-slate-500 mt-1">Dorpsstraat 12</p>
+        <p className="text-slate-600 text-lg mt-4">Uw locatie nu:</p>
+        <p className="text-slate-800 font-semibold">
+          {position
+            ? (sosAddress || `${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}`)
+            : 'Uw locatie is nog niet bekend'}
+        </p>
+        {position && (
+          <a href={osmLink(position)} target="_blank" rel="noreferrer" className="text-blue-700 underline text-sm">
+            Bekijk op de kaart
+          </a>
+        )}
       </div>
 
       <a
@@ -363,6 +557,16 @@ export default function ScootNavApp() {
         <Phone size={32} />
         BEL {contactName.toUpperCase()}
       </a>
+
+      {position && (
+        <a
+          href={`sms:${cleanPhone(contactPhone)}?body=${encodeURIComponent(`Ik heb hulp nodig. Mijn locatie: ${sosAddress ? sosAddress + ' - ' : ''}${osmLink(position)}`)}`}
+          className="bg-white text-red-700 border-2 border-red-200 w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-3 mb-4"
+        >
+          <MessageSquare size={26} />
+          Stuur mijn locatie per sms
+        </a>
+      )}
 
       <div className="text-center text-slate-500 font-medium mb-4">
         Telefoonnummer: {contactPhone}
