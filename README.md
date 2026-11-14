@@ -23,6 +23,13 @@ Open daarna http://localhost:5173 in je browser.
   `http://<ip-adres>:5173` geeft dus geen locatie; zet de app daarvoor online (https).
 - Met **Demo-rit** kun je een route uitproberen zonder te rijden.
 
+## Online
+
+De app staat online op **https://joopzakelijk-boot.github.io/-mijn-scootmobiel-app./**
+(na elke wijziging op `main` wordt hij automatisch bijgewerkt).
+
+Eenmalig instellen: ga op GitHub naar **Settings → Pages** en kies bij **Source** voor **GitHub Actions**.
+
 ## Overige commando's
 
 - `npm run build`: maakt een versie om online te zetten in de map `dist/`
