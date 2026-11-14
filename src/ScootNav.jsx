@@ -12,6 +12,31 @@ const ROUTE_POINTS = [
   { x: 80, y: 20 }   // Eind
 ];
 
+// Instellingen worden in de browser bewaard (localStorage)
+const STORAGE_KEY = 'scootnav-instellingen';
+const TEXT_SCALE_MIN = 0.8;
+const TEXT_SCALE_MAX = 1.5;
+const DEFAULT_SETTINGS = {
+  homeAddress: "Kerkplein 1, Het Dorp",
+  contactName: "Dochter Emma",
+  contactPhone: "06-12345678",
+  textScale: 1,
+  voiceEnabled: true,
+  vehicleType: 'scootmobiel'
+};
+
+const loadSettings = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return { ...DEFAULT_SETTINGS, ...(stored || {}) };
+  } catch (e) {
+    return DEFAULT_SETTINGS;
+  }
+};
+
+// Telefoonnummer geschikt maken voor een tel:-link (alleen cijfers en +)
+const toTelHref = (phone) => `tel:${phone.replace(/[^\d+]/g, '')}`;
+
 // Helper om punt op lijnstuk te vinden
 const getPointOnLine = (p1, p2, t) => ({
   x: p1.x + (p2.x - p1.x) * t,
@@ -118,11 +143,65 @@ export default function ScootNavApp() {
   const [progress, setProgress] = useState(0);
   const [showExitModal, setShowExitModal] = useState(false);
   
-  // Nieuwe state voor persoonlijke instellingen
-  const [homeAddress, setHomeAddress] = useState("Kerkplein 1, Het Dorp");
-  const [contactName, setContactName] = useState("Dochter Emma");
-  const [contactPhone, setContactPhone] = useState("06-12345678");
-  
+  // Persoonlijke instellingen (worden bewaard in de browser)
+  const [saved] = useState(loadSettings);
+  const [homeAddress, setHomeAddress] = useState(saved.homeAddress);
+  const [contactName, setContactName] = useState(saved.contactName);
+  const [contactPhone, setContactPhone] = useState(saved.contactPhone);
+  const [textScale, setTextScale] = useState(saved.textScale);
+  const [voiceEnabled, setVoiceEnabled] = useState(saved.voiceEnabled);
+  const [vehicleType, setVehicleType] = useState(saved.vehicleType);
+
+  // Instellingen automatisch bewaren bij elke wijziging
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType
+      }));
+    } catch (e) {
+      // Opslag niet beschikbaar (bijv. privévenster): app werkt gewoon door
+    }
+  }, [homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType]);
+
+  // Tekstgrootte: alle Tailwind-maten zijn in rem, dus de basisgrootte schaalt alles mee
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${16 * textScale}px`;
+  }, [textScale]);
+
+  const changeTextScale = (delta) => {
+    setTextScale(prev => {
+      const next = Math.round((prev + delta) * 10) / 10;
+      return Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, next));
+    });
+  };
+
+  // Spraakbegeleiding: lees een tekst hardop voor als die aan staat
+  const voiceRef = useRef(voiceEnabled);
+  voiceRef.current = voiceEnabled;
+  const say = (text, force = false) => {
+    if (!(voiceRef.current || force) || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'nl-NL';
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleVoice = () => {
+    const next = !voiceEnabled;
+    setVoiceEnabled(next);
+    if (next) {
+      say("Spraakbegeleiding staat aan", true);
+    } else if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  };
+
+  // Halverwege de route de afslag aankondigen
+  useEffect(() => {
+    if (isNavigating && progress === 40) say("Over 50 meter rechtsaf");
+  }, [isNavigating, progress]);
+
   // Simulatie interval
   useEffect(() => {
     let interval;
@@ -144,6 +223,7 @@ export default function ScootNavApp() {
       setIsNavigating(false);
       setProgress(0);
       // Gebruik timeout om alert uit de render loop te halen
+      say("U bent op uw bestemming");
       setTimeout(() => alert("Bestemming bereikt!"), 100);
     } else {
       setSpeed(0);
@@ -158,10 +238,12 @@ export default function ScootNavApp() {
       setIsNavigating(true);
       setProgress(0);
       setView('map');
+      say("Route gestart. Rijd rechtdoor.");
     }
   };
 
   const confirmStop = () => {
+    say("Route gestopt");
     setIsNavigating(false);
     setSpeed(0);
     setShowExitModal(false);
@@ -274,10 +356,13 @@ export default function ScootNavApp() {
         <p className="text-slate-500 mt-1">Dorpsstraat 12</p>
       </div>
 
-      <button className="bg-red-600 text-white w-full py-8 rounded-2xl text-2xl font-bold shadow-lg animate-pulse flex items-center justify-center gap-3 mb-4 active:scale-95 transition-transform">
+      <a
+        href={toTelHref(contactPhone)}
+        className="bg-red-600 text-white w-full py-8 rounded-2xl text-2xl font-bold shadow-lg animate-pulse flex items-center justify-center gap-3 mb-4 active:scale-95 transition-transform"
+      >
         <Phone size={32} />
         BEL {contactName.toUpperCase()}
-      </button>
+      </a>
 
       <div className="text-center text-slate-500 font-medium mb-4">
         Telefoonnummer: {contactPhone}
@@ -348,9 +433,20 @@ export default function ScootNavApp() {
 
          <div className="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center">
             <span className="text-lg font-medium">Tekstgrootte</span>
-            <div className="flex gap-2">
-              <button className="p-2 bg-slate-100 rounded-lg"><Minus size={20}/></button>
-              <button className="p-2 bg-slate-100 rounded-lg"><Plus size={20}/></button>
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={() => changeTextScale(-0.1)}
+                disabled={textScale <= TEXT_SCALE_MIN}
+                aria-label="Tekst kleiner"
+                className="p-2 bg-slate-100 rounded-lg active:bg-slate-200 disabled:opacity-40"
+              ><Minus size={20}/></button>
+              <span className="w-14 text-center font-bold tabular-nums">{Math.round(textScale * 100)}%</span>
+              <button
+                onClick={() => changeTextScale(0.1)}
+                disabled={textScale >= TEXT_SCALE_MAX}
+                aria-label="Tekst groter"
+                className="p-2 bg-slate-100 rounded-lg active:bg-slate-200 disabled:opacity-40"
+              ><Plus size={20}/></button>
             </div>
          </div>
 
@@ -359,22 +455,34 @@ export default function ScootNavApp() {
               <span className="text-lg font-medium">Spraakbegeleiding</span>
               <span className="text-slate-500 text-sm">Routes hardop voorlezen</span>
             </div>
-            <div className="w-14 h-8 bg-green-500 rounded-full relative cursor-pointer">
-              <div className="absolute right-1 top-1 bg-white w-6 h-6 rounded-full shadow-md"></div>
-            </div>
+            <button
+              role="switch"
+              aria-checked={voiceEnabled}
+              aria-label="Spraakbegeleiding"
+              onClick={toggleVoice}
+              className={`w-14 h-8 rounded-full relative cursor-pointer transition-colors ${voiceEnabled ? 'bg-green-500' : 'bg-slate-300'}`}
+            >
+              <span className={`absolute top-1 bg-white w-6 h-6 rounded-full shadow-md transition-all ${voiceEnabled ? 'right-1' : 'left-1'}`}></span>
+            </button>
          </div>
 
          <div className="bg-white p-4 rounded-xl shadow-sm">
             <span className="text-lg font-medium block mb-2">Vervoerstype</span>
             <div className="flex gap-2">
-               <button className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium">Scootmobiel</button>
-               <button className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg font-medium">Elektrische Fiets</button>
+               {[['scootmobiel', 'Scootmobiel'], ['fiets', 'Elektrische Fiets']].map(([value, label]) => (
+                 <button
+                   key={value}
+                   onClick={() => setVehicleType(value)}
+                   aria-pressed={vehicleType === value}
+                   className={`flex-1 py-2 rounded-lg font-medium ${vehicleType === value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+                 >{label}</button>
+               ))}
             </div>
          </div>
 
-         <button 
+         <button
             onClick={() => {
-              // In een echte app zou je hier opslaan naar een database
+              // Instellingen worden al automatisch bewaard bij elke wijziging
               alert("Instellingen zijn opgeslagen!");
               setView('home');
             }}
