@@ -29,7 +29,7 @@ Open daarna http://localhost:5173 in je browser.
 
 ## Online
 
-De app staat online op **https://joopzakelijk-boot.github.io/-mijn-scootmobiel-app./**
+De app staat online op **https://joopzakelijk-boot.github.io/mijn-scootmobiel-app/**
 (na elke wijziging op `main` wordt hij automatisch bijgewerkt).
 
 Eenmalig instellen: ga op GitHub naar **Settings → Pages** en kies bij **Source** voor **GitHub Actions**.
