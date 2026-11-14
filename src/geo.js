@@ -64,31 +64,25 @@ export const spokenDistance = (m) => {
   return `Over ${(m / 1000).toFixed(1).replace('.', ',')} kilometer`;
 };
 
-const TURNS = {
-  'left': 'Ga linksaf',
-  'right': 'Ga rechtsaf',
-  'slight left': 'Houd links aan',
-  'slight right': 'Houd rechts aan',
-  'sharp left': 'Ga scherp linksaf',
-  'sharp right': 'Ga scherp rechtsaf',
-  'straight': 'Ga rechtdoor',
-  'uturn': 'Keer om'
-};
-
-// Nederlandse instructie voor een routestap van de routeplanner (OSRM)
-export const instructionText = (step) => {
-  const { type, modifier, exit } = step.maneuver;
-  if (type === 'depart') return `Vertrek${step.name ? ` over ${step.name}` : ''}`;
-  if (type === 'arrive') return 'U bent op uw bestemming';
-  const toStreet = step.name ? ` naar ${step.name}` : '';
-  if (type === 'roundabout' || type === 'rotary') {
-    return `Neem op de rotonde afslag ${exit || 1}${toStreet}`;
-  }
-  if (type === 'continue' || type === 'new name') {
-    return `Ga ${modifier === 'straight' || !modifier ? 'rechtdoor' : 'verder'}${step.name ? ` over ${step.name}` : ''}`;
-  }
-  return `${TURNS[modifier] || 'Ga verder'}${toStreet}`;
-};
-
 // Eerste letter klein, voor gebruik midden in een zin ("Over 50 meter ga linksaf")
 export const lowerFirst = (text) => text.charAt(0).toLowerCase() + text.slice(1);
+
+// Routelijn van de routeplanner (Valhalla, "polyline6") omzetten naar punten
+export const decodePolyline6 = (str) => {
+  const coords = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < str.length) {
+    for (const which of [0, 1]) {
+      let result = 0, shift = 0, b;
+      do {
+        b = str.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const delta = result & 1 ? ~(result >> 1) : result >> 1;
+      if (which === 0) lat += delta; else lng += delta;
+    }
+    coords.push({ lat: lat / 1e6, lng: lng / 1e6 });
+  }
+  return coords;
+};

@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Fietsknooppunt-bordje op de kaart (groen-wit, zoals de echte bordjes) */
+.kp-icon {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #15803d;
+  color: #fff;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.kp-icon.kp-selected { background: #1d4ed8; transform: scale(1.12); }
+.kp-order {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  color: #111827;
+  border: 2px solid #fff;
+  font: 800 12px/18px system-ui, sans-serif;
+  text-align: center;
+}

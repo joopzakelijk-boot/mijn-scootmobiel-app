@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import React, { useEffect, useMemo } from 'react';
+import L from 'leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Marker, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
 // Midden van Nederland, zolang de eigen locatie nog niet bekend is
@@ -29,6 +30,18 @@ function ResizeWatcher() {
   return null;
 }
 
+// Meldt het zichtbare gebied, zodat de app daar de knooppunten kan ophalen
+function MoveReporter({ onMove }) {
+  const map = useMap();
+  const report = () => {
+    const b = map.getBounds();
+    onMove?.({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }, map.getZoom());
+  };
+  useMapEvents({ moveend: report });
+  useEffect(() => { report(); }, []);
+  return null;
+}
+
 // Laat de hele route zien zodra er een nieuwe route is (als we niet volgen)
 function FitRoute({ route, follow }) {
   const map = useMap();
@@ -45,7 +58,34 @@ function FitRoute({ route, follow }) {
   return null;
 }
 
-export default function RealMap({ position, route, destination, follow, setFollow, isNavigating }) {
+// Bij het plannen met knooppunten iets uitzoomen, zodat er meerdere in beeld zijn
+function OverviewZoom({ zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (zoom && map.getZoom() > zoom) map.setZoom(zoom);
+  }, [zoom]);
+  return null;
+}
+
+// Knooppuntbordje: nummer in een rondje, blauw als het gekozen is
+const nodeIcon = (ref, order) => L.divIcon({
+  className: '',
+  html: `<div class="kp-icon${order ? ' kp-selected' : ''}">${ref}${order ? `<span class="kp-order">${order}</span>` : ''}</div>`,
+  iconSize: [40, 40],
+  iconAnchor: [20, 20]
+});
+
+export default function RealMap({
+  position, route, destination, follow, setFollow, isNavigating,
+  knooppunten = [], netwerk = [], selected = [], onNodeClick, onMove, planLine, overviewZoom
+}) {
+  // Volgorde-nummers van gekozen knooppunten (een knooppunt kan vaker gekozen zijn)
+  const orderById = useMemo(() => {
+    const m = {};
+    selected.forEach((n, i) => { m[n.id] = m[n.id] ? `${m[n.id]},${i + 1}` : `${i + 1}`; });
+    return m;
+  }, [selected]);
+
   return (
     <MapContainer
       center={position ? [position.lat, position.lng] : NL_CENTER}
@@ -60,6 +100,16 @@ export default function RealMap({ position, route, destination, follow, setFollo
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       />
 
+      {/* Knooppuntennetwerk (groene lijnen) */}
+      {netwerk.map((w) => (
+        <Polyline key={w.id} positions={w.coords.map((c) => [c.lat, c.lng])} pathOptions={{ color: '#15803d', weight: 4, opacity: 0.55 }} interactive={false} />
+      ))}
+
+      {/* Voorlopige lijn tussen de gekozen knooppunten */}
+      {planLine && planLine.length > 1 && (
+        <Polyline positions={planLine.map((c) => [c.lat, c.lng])} pathOptions={{ color: '#1d4ed8', weight: 4, dashArray: '8 8' }} interactive={false} />
+      )}
+
       {route && (
         <>
           {/* Witte rand onder de route, zodat hij goed opvalt */}
@@ -67,6 +117,17 @@ export default function RealMap({ position, route, destination, follow, setFollo
           <Polyline positions={route.coords.map((c) => [c.lat, c.lng])} pathOptions={{ color: isNavigating ? '#2563eb' : '#64748b', weight: 7 }} />
         </>
       )}
+
+      {knooppunten.map((n) => (
+        <Marker
+          key={n.id}
+          position={[n.lat, n.lng]}
+          icon={nodeIcon(n.ref, orderById[n.id])}
+          eventHandlers={{ click: () => onNodeClick?.(n) }}
+          keyboard={true}
+          title={`Knooppunt ${n.ref}`}
+        />
+      ))}
 
       {destination && (
         <CircleMarker center={[destination.lat, destination.lng]} radius={10} pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#dc2626', fillOpacity: 1 }} />
@@ -84,6 +145,8 @@ export default function RealMap({ position, route, destination, follow, setFollo
       <FollowUser position={position} follow={follow} setFollow={setFollow} zoom={isNavigating ? 18 : 17} />
       <FitRoute route={route} follow={follow} />
       <ResizeWatcher />
+      <MoveReporter onMove={onMove} />
+      <OverviewZoom zoom={overviewZoom} />
     </MapContainer>
   );
 }
