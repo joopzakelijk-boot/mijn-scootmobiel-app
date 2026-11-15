@@ -1,0 +1,67 @@
+# Bouwt de Android-app (APK) en zet die klaar als download.
+# Op main: als "Release" op GitHub, met een vaste downloadlink naar de nieuwste versie.
+# Op andere branches: alleen als bijlage bij de bouw (om te testen).
+name: Android-app bouwen (APK)
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Fietsknooppunten ophalen
+        run: node scripts/fetch-knooppunten.mjs
+
+      - name: Webapp bouwen en in de Android-app zetten
+        run: |
+          npm run build
+          npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: APK bouwen
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ../ScootNav.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScootNav-apk
+          path: ScootNav.apk
+
+      - name: Als download klaarzetten (alleen main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-${{ github.run_number }}
+          name: ScootNav voor Android (versie 1.0.${{ github.run_number }})
+          make_latest: true
+          files: ScootNav.apk
+          body: |
+            ScootNav voor Android. Installeren: download **ScootNav.apk** op je Android-telefoon en open het bestand.
+            Sta zo nodig "Installeren uit onbekende bronnen" toe voor je browser of bestandsbeheer.

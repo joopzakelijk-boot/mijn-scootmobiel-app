@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2, ChevronRight, Clock, Octagon, ArrowLeft, Accessibility, ShieldAlert, Volume2, Type, Bike, Sparkles, Gauge, HelpCircle } from 'lucide-react';
 import logo from './assets/logo.svg';
+import { Capacitor } from '@capacitor/core';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import { App as NativeApp } from '@capacitor/app';
+
+// Draait de app als Android-app (APK) in plaats van in de browser?
+const isNativeApp = Capacitor.isNativePlatform();
 import RealMap from './RealMap';
 import Splash from './Splash';
 import Onboarding, { RANGE_MIN, RANGE_MAX } from './Onboarding';
@@ -268,7 +274,13 @@ export default function ScootNavApp() {
   voiceRef.current = voiceEnabled;
   // queue: achter de lopende melding aan zetten in plaats van die te onderbreken
   const say = (text, force = false, queue = false) => {
-    if (!(voiceRef.current || force) || !('speechSynthesis' in window)) return;
+    if (!(voiceRef.current || force)) return;
+    if (isNativeApp) {
+      // In de Android-app: de spraak van Android zelf (de browserspraak werkt daar niet)
+      TextToSpeech.speak({ text, lang: 'nl-NL', rate: 0.95, queueStrategy: queue ? 1 : 0 }).catch(() => {});
+      return;
+    }
+    if (!('speechSynthesis' in window)) return;
     if (!queue) window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'nl-NL';
@@ -281,6 +293,8 @@ export default function ScootNavApp() {
     setVoiceEnabled(next);
     if (next) {
       say("Spraakbegeleiding staat aan", true);
+    } else if (isNativeApp) {
+      TextToSpeech.stop().catch(() => {});
     } else if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -649,6 +663,21 @@ export default function ScootNavApp() {
       setBusy(false);
     }
   };
+
+  // Terugknop van de Android-telefoon: naar het menu, of de app sluiten vanaf het menu
+  const backState = useRef({});
+  backState.current = { view, stage, showExitModal };
+  useEffect(() => {
+    if (!isNativeApp) return;
+    const handle = NativeApp.addListener('backButton', () => {
+      const st = backState.current;
+      if (st.showExitModal) setShowExitModal(false);
+      else if (st.stage === 'battery' || st.stage === 'intro') setStage('app');
+      else if (st.view !== 'home') setView('home');
+      else NativeApp.exitApp();
+    });
+    return () => { handle.then((h) => h.remove()).catch(() => {}); };
+  }, []);
 
   // Noodknop: adres van de huidige plek opzoeken
   useEffect(() => {

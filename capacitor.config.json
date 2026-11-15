@@ -1,0 +1,8 @@
+{
+  "appId": "io.github.joopzakelijkboot.scootnav",
+  "appName": "ScootNav",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#1e40af"
+  }
+}
