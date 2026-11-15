@@ -164,6 +164,22 @@ async function overpass(query, signal) {
 
 const bboxOf = (b) => `${b.south},${b.west},${b.north},${b.east}`;
 
+// Knooppunten die bij het online zetten zijn meegeleverd (public/knooppunten.json).
+// Eén keer laden; daarna wordt er alleen nog in het geheugen gezocht.
+let staticKnooppunten = null;
+export async function loadStaticKnooppunten() {
+  if (!staticKnooppunten) {
+    staticKnooppunten = fetch(`${import.meta.env.BASE_URL}knooppunten.json`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => (data?.nodes || []).map(([id, ref, lat, lng]) => ({ id, ref, lat, lng })))
+      .catch(() => []);
+  }
+  return staticKnooppunten;
+}
+
+export const knooppuntenIn = (all, b) =>
+  all.filter((n) => n.lat >= b.south && n.lat <= b.north && n.lng >= b.west && n.lng <= b.east);
+
 // Fietsknooppunten binnen een gebied: [{ id, ref, lat, lng }]
 // bounds: { south, west, north, east }
 export async function fetchKnooppunten(bounds, signal) {
