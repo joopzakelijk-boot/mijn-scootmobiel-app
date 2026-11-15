@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2 } from 'lucide-react';
 import RealMap from './RealMap';
 import { useLocation } from './useLocation';
-import { searchAddress, reverseGeocode, fetchRoute, fetchKnooppunten } from './services';
+import { searchAddress, reverseGeocode, fetchRoute, fetchKnooppunten, fetchKnooppuntNetwerk } from './services';
 import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, lowerFirst } from './geo';
 
 // Instellingen worden in de browser bewaard (localStorage)
@@ -29,6 +29,7 @@ const DEMO_TICK_MS = 250;
 // Knooppunten worden pas getoond vanaf dit zoomniveau (anders te veel tegelijk)
 const KP_MIN_ZOOM = 13;
 const KP_OVERVIEW_ZOOM = 14;
+const KP_LOAD_DELAY_MS = 600;
 
 const loadSettings = () => {
   try {
@@ -221,7 +222,17 @@ export default function ScootNavApp() {
   const mapView = useRef(null);
   const kpLoaded = useRef(null);
 
-  const loadKnooppunten = async () => {
+  const kpTimer = useRef(null);
+  const kpAbort = useRef(null);
+
+  // Knooppunten ophalen voor het zichtbare gebied. Wacht tot de kaart even stilstaat
+  // en doet maar één aanvraag tegelijk (de gratis dienst weigert te veel aanvragen).
+  const loadKnooppunten = () => {
+    clearTimeout(kpTimer.current);
+    kpTimer.current = setTimeout(doLoadKnooppunten, KP_LOAD_DELAY_MS);
+  };
+
+  const doLoadKnooppunten = async () => {
     const v = mapView.current;
     if (!v) return;
     if (v.zoom < KP_MIN_ZOOM) { setKpStatus('zoom'); return; }
@@ -232,17 +243,37 @@ export default function ScootNavApp() {
       return; // dit gebied is al geladen
     }
     // Iets ruimer ophalen, zodat kleine verschuivingen geen nieuwe aanvraag geven
-    const padLat = (b.north - b.south) * 0.5, padLng = (b.east - b.west) * 0.5;
+    const padLat = (b.north - b.south) * 0.25, padLng = (b.east - b.west) * 0.25;
     const area = { south: b.south - padLat, north: b.north + padLat, west: b.west - padLng, east: b.east + padLng };
+
+    kpAbort.current?.abort(); // een oudere aanvraag die nog loopt is niet meer nodig
+    const controller = new AbortController();
+    kpAbort.current = controller;
     setKpStatus('laden');
     try {
-      const { nodes, lines } = await fetchKnooppunten(area);
+      const nodes = await fetchKnooppunten(area, controller.signal);
+      // Samenvoegen met wat al geladen was, zodat bordjes niet verdwijnen bij schuiven
+      setKpNodes((old) => {
+        const byId = new Map(old.map((n) => [n.id, n]));
+        nodes.forEach((n) => byId.set(n.id, n));
+        return [...byId.values()];
+      });
       kpLoaded.current = area;
-      setKpNodes(nodes);
-      setKpLines(lines);
-      setKpStatus('');
+      setKpStatus(nodes.length ? '' : 'leeg');
     } catch (e) {
-      setKpStatus('fout');
+      if (e.name !== 'AbortError') setKpStatus('fout');
+      return;
+    }
+    // Daarna de groene lijnen; als dat mislukt, werken de knooppunten gewoon
+    try {
+      const lines = await fetchKnooppuntNetwerk(area, controller.signal);
+      setKpLines((old) => {
+        const byId = new Map(old.map((w) => [w.id, w]));
+        lines.forEach((w) => byId.set(w.id, w));
+        return [...byId.values()];
+      });
+    } catch (e) {
+      // lijnen zijn alleen ter ondersteuning
     }
   };
 
@@ -739,7 +770,8 @@ export default function ScootNavApp() {
           <div className="absolute left-2 right-2 top-16 z-[500] bg-white/95 border border-slate-200 text-slate-800 rounded-lg p-3 font-semibold shadow flex items-center gap-2">
             {kpStatus === 'laden' && <><Loader2 size={20} className="animate-spin" /> Knooppunten laden…</>}
             {kpStatus === 'zoom' && 'Zoom verder in om de knooppunten te zien.'}
-            {kpStatus === 'fout' && <>Knooppunten laden lukt nu niet. <button onClick={() => { kpLoaded.current = null; loadKnooppunten(); }} className="underline text-blue-700">Opnieuw</button></>}
+            {kpStatus === 'leeg' && 'Hier zijn geen knooppunten gevonden. Schuif de kaart of zoom iets uit.'}
+            {kpStatus === 'fout' && <span>De knooppuntendienst is nu druk of niet bereikbaar. <button onClick={() => { kpLoaded.current = null; doLoadKnooppunten(); }} className="underline text-blue-700">Opnieuw proberen</button></span>}
           </div>
         )}
         {!follow && position && (
