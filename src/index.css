@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Basis: lettertype, achtergrond en een duidelijke focusrand voor toetsenbordgebruikers */
+html, body { background: #e6ebf3; color: #0f1b33; -webkit-tap-highlight-color: transparent; }
+body { font-family: "Inter Variable", Inter, system-ui, sans-serif; font-feature-settings: "cv11", "ss01"; }
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 3px solid #6090fa;
+  outline-offset: 2px;
+}
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.text-balance { text-wrap: balance; }
+
+/* Waarschuwingsbordje voor een gevaarlijke oversteek op de kaart */
+.hazard-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  color: #111827;
+  font: 900 16px/24px system-ui, sans-serif;
+  text-align: center;
+}
+
 /* Fietsknooppunt-bordje op de kaart (groen-wit, zoals de echte bordjes) */
 .kp-icon {
   position: relative;

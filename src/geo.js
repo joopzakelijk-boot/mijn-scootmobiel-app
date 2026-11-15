@@ -86,3 +86,20 @@ export const decodePolyline6 = (str) => {
   }
   return coords;
 };
+
+// Punten omzetten naar een routelijn ("polyline6"), zoals de routeplanner die verwacht
+export const encodePolyline6 = (coords) => {
+  let out = '', prevLat = 0, prevLng = 0;
+  const enc = (v) => {
+    v = v < 0 ? ~(v << 1) : v << 1;
+    let s = '';
+    while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  };
+  for (const c of coords) {
+    const lat = Math.round(c.lat * 1e6), lng = Math.round(c.lng * 1e6);
+    out += enc(lat - prevLat) + enc(lng - prevLng);
+    prevLat = lat; prevLng = lng;
+  }
+  return out;
+};
