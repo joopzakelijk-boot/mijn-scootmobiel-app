@@ -1,12 +1,42 @@
-// Gratis kaartdiensten van OpenStreetMap.
+// Gratis kaartdiensten op basis van OpenStreetMap.
 // Let op: deze openbare diensten zijn bedoeld voor licht gebruik (demo / eigen gebruik).
 // Voor een app met veel gebruikers is een eigen of betaalde dienst nodig.
+import { decodePolyline6 } from './geo';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
-// Routeplanner met profielen voor voetgangers (stoep, past bij een scootmobiel) en fietsers
-const ROUTERS = {
-  scootmobiel: 'https://routing.openstreetmap.de/routed-foot',
-  fiets: 'https://routing.openstreetmap.de/routed-bike'
+const VALHALLA = 'https://valhalla1.openstreetmap.de/route';
+const OVERPASS = 'https://overpass-api.de/api/interpreter';
+
+// Routeprofielen. De scootmobiel rijdt over fietspaden en rustige straten,
+// zonder trappen (die kan een fiets ook niet nemen), en vermijdt onverharde
+// paden, hellingen en drukke wegen. Maximaal 12 km/u.
+const PROFILES = {
+  scootmobiel: {
+    costing: 'bicycle',
+    costing_options: {
+      bicycle: {
+        bicycle_type: 'City',
+        cycling_speed: 12,
+        use_roads: 0.1,          // liever fietspad dan rijbaan
+        use_hills: 0.05,         // hellingen zoveel mogelijk vermijden
+        avoid_bad_surfaces: 1,   // geen onverharde of slechte paden
+        use_ferry: 0,            // geen pontjes
+        use_living_streets: 0.8  // woonerven zijn prima
+      }
+    }
+  },
+  fiets: {
+    costing: 'bicycle',
+    costing_options: {
+      bicycle: {
+        bicycle_type: 'Hybrid',
+        cycling_speed: 20,
+        use_roads: 0.3,
+        use_hills: 0.4,
+        avoid_bad_surfaces: 0.5
+      }
+    }
+  }
 };
 
 // Adres of plaats zoeken. Geeft een lijst { label, lat, lng }.
@@ -41,24 +71,92 @@ export async function reverseGeocode({ lat, lng }) {
   return [street, place].filter(Boolean).join(', ') || data.display_name;
 }
 
-// Route berekenen van `from` naar `to`.
-// Geeft { coords: [{lat,lng}], steps: [...], distance (m), duration (s) }
-export async function fetchRoute(from, to, vehicleType = 'scootmobiel') {
-  const base = ROUTERS[vehicleType] || ROUTERS.scootmobiel;
-  const url = `${base}/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}` +
-    '?overview=full&geometries=geojson&steps=true';
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Route berekenen lukt nu niet. Probeer het zo opnieuw.');
-  const data = await res.json();
-  if (data.code !== 'Ok' || !data.routes?.length) throw new Error('Geen route gevonden naar deze bestemming.');
-  const route = data.routes[0];
-  return {
-    coords: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
-    steps: route.legs[0].steps.map((s) => ({
-      ...s,
-      location: { lat: s.maneuver.location[1], lng: s.maneuver.location[0] }
-    })),
-    distance: route.distance,
-    duration: route.duration
+const isStart = (t) => t === 1 || t === 2 || t === 3;
+const isEnd = (t) => t === 4 || t === 5 || t === 6;
+
+const nodeText = (points, i) => {
+  const p = points[i];
+  if (!p.ref) return 'Tussenpunt bereikt';
+  const next = points[i + 1]?.ref;
+  return `Knooppunt ${p.ref}${next ? `, volg daarna ${next}` : ''}`;
+};
+
+// Route berekenen langs een lijst punten [{ lat, lng, ref? }] (minstens 2).
+// `ref` is het nummer van een fietsknooppunt.
+// Geeft { coords, steps, distance (m), duration (s) }.
+// Elke stap: { kind: 'depart'|'turn'|'node'|'arrive', text, location, distance, ref? }
+export async function fetchRoute(points, vehicleType = 'scootmobiel') {
+  const profile = PROFILES[vehicleType] || PROFILES.scootmobiel;
+  const body = {
+    locations: points.map((p) => ({ lat: p.lat, lon: p.lng, type: 'break' })),
+    ...profile,
+    units: 'kilometers',
+    directions_options: { language: 'nl-NL', units: 'kilometers' }
   };
+  const res = await fetch(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(body))}`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.trip) {
+    throw new Error('Geen geschikte route gevonden. Misschien is er geen verhard pad zonder trappen. Kies een ander punt.');
+  }
+
+  const legs = data.trip.legs;
+  const coords = [];
+  const steps = [];
+  legs.forEach((leg, li) => {
+    const shape = decodePolyline6(leg.shape);
+    coords.push(...(li === 0 ? shape : shape.slice(1)));
+    leg.maneuvers.forEach((m) => {
+      if (isStart(m.type) && li > 0) return; // vertrek na een tussenpunt telt niet als aparte stap
+      const step = {
+        kind: isStart(m.type) ? 'depart' : isEnd(m.type) ? 'arrive' : 'turn',
+        text: m.instruction,
+        location: shape[m.begin_shape_index],
+        distance: m.length * 1000
+      };
+      if (isEnd(m.type) && li < legs.length - 1) {
+        // Aankomst bij een tussenpunt: dit is een knooppunt onderweg
+        step.kind = 'node';
+        step.ref = points[li + 1].ref;
+        step.waypoint = li + 1;
+        step.text = nodeText(points, li + 1);
+        step.distance = legs[li + 1].maneuvers[0].length * 1000;
+      }
+      steps.push(step);
+    });
+  });
+
+  return {
+    coords,
+    steps,
+    distance: data.trip.summary.length * 1000,
+    duration: data.trip.summary.time
+  };
+}
+
+// Fietsknooppunten en het knooppuntennetwerk binnen een gebied ophalen.
+// bounds: { south, west, north, east }
+export async function fetchKnooppunten(bounds) {
+  const bbox = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`;
+  const query = `[out:json][timeout:25];
+node["rcn_ref"](${bbox});
+out;
+relation["type"="route"]["network"="rcn"](${bbox});
+way(r)(${bbox});
+out geom;`;
+  const res = await fetch(OVERPASS, {
+    method: 'POST',
+    body: new URLSearchParams({ data: query })
+  });
+  if (!res.ok) throw new Error('Knooppunten laden lukt nu niet. Probeer het zo opnieuw.');
+  const data = await res.json();
+  const nodes = [];
+  const lines = [];
+  for (const el of data.elements) {
+    if (el.type === 'node' && el.tags?.rcn_ref) {
+      nodes.push({ id: el.id, ref: el.tags.rcn_ref, lat: el.lat, lng: el.lon });
+    } else if (el.type === 'way' && el.geometry) {
+      lines.push({ id: el.id, coords: el.geometry.map((g) => ({ lat: g.lat, lng: g.lon })) });
+    }
+  }
+  return { nodes, lines };
 }
