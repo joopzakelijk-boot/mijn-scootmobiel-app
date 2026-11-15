@@ -13,7 +13,10 @@ function FollowUser({ position, follow, setFollow, zoom }) {
   useMapEvents({ dragstart: () => setFollow(false) });
   useEffect(() => {
     if (follow && position) {
-      map.setView([position.lat, position.lng], Math.max(map.getZoom(), zoom), { animate: true });
+      // Alleen schuiven animeren; inzoomen zonder animatie (een zoom-animatie die nog loopt
+      // als het scherm sluit, geeft anders een fout in de kaart)
+      const targetZoom = Math.max(map.getZoom(), zoom);
+      map.setView([position.lat, position.lng], targetZoom, { animate: targetZoom === map.getZoom() });
     }
   }, [follow, position?.lat, position?.lng]);
   return null;
@@ -23,7 +26,7 @@ function FollowUser({ position, follow, setFollow, zoom }) {
 function ResizeWatcher() {
   const map = useMap();
   useEffect(() => {
-    const ro = new ResizeObserver(() => map.invalidateSize());
+    const ro = new ResizeObserver(() => map.invalidateSize({ animate: false }));
     ro.observe(map.getContainer());
     return () => ro.disconnect();
   }, [map]);
@@ -50,7 +53,7 @@ function FitRoute({ route, follow }) {
       // Even wachten tot het paneel onderin zijn hoogte heeft, dan de hele route tonen
       const id = setTimeout(() => {
         map.invalidateSize();
-        map.fitBounds(route.coords.map((c) => [c.lat, c.lng]), { paddingTopLeft: [40, 80], paddingBottomRight: [40, 40] });
+        map.fitBounds(route.coords.map((c) => [c.lat, c.lng]), { paddingTopLeft: [40, 80], paddingBottomRight: [40, 40], animate: false });
       }, 50);
       return () => clearTimeout(id);
     }
@@ -62,7 +65,7 @@ function FitRoute({ route, follow }) {
 function OverviewZoom({ zoom }) {
   const map = useMap();
   useEffect(() => {
-    if (zoom && map.getZoom() > zoom) map.setZoom(zoom);
+    if (zoom && map.getZoom() > zoom) map.setZoom(zoom, { animate: false });
   }, [zoom]);
   return null;
 }
@@ -75,9 +78,16 @@ const nodeIcon = (ref, order) => L.divIcon({
   iconAnchor: [20, 20]
 });
 
+const hazardIcon = L.divIcon({
+  className: '',
+  html: '<div class="hazard-icon" title="Gevaarlijke oversteek">!</div>',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15]
+});
+
 export default function RealMap({
   position, route, destination, follow, setFollow, isNavigating,
-  knooppunten = [], netwerk = [], selected = [], onNodeClick, onMove, planLine, overviewZoom
+  knooppunten = [], netwerk = [], selected = [], onNodeClick, onMove, planLine, overviewZoom, hazards = []
 }) {
   // Volgorde-nummers van gekozen knooppunten (een knooppunt kan vaker gekozen zijn)
   const orderById = useMemo(() => {
@@ -127,6 +137,11 @@ export default function RealMap({
           keyboard={true}
           title={`Knooppunt ${n.ref}`}
         />
+      ))}
+
+      {/* Gevaarlijke oversteken langs de route */}
+      {hazards.map((h, i) => (
+        <Marker key={`h${i}`} position={[h.lat, h.lng]} icon={hazardIcon} interactive={false} keyboard={false} />
       ))}
 
       {destination && (

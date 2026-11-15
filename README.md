@@ -34,6 +34,16 @@ De app staat online op **https://joopzakelijk-boot.github.io/mijn-scootmobiel-ap
 
 Eenmalig instellen: ga op GitHub naar **Settings → Pages** en kies bij **Source** voor **GitHub Actions**.
 
+## Gesproken meldingen
+
+Met spraakbegeleiding aan zegt de app onder andere:
+- "Daar gaan we!" bij het starten van een route, en "We zijn er!" bij aankomst
+- "Let op: deze route is langer dan het bereik van uw scootmobiel." als de route te lang is voor de accu
+- "Let op! Over 80 meter steekt u een drukke weg over. Kijk goed uit." vóór een gevaarlijke oversteek
+
+Gevaarlijke oversteken zijn plekken waar de route een drukke weg kruist (hoofdweg of provinciale weg).
+Ze worden opgezocht via de routeplanner (Valhalla) en staan als oranje bordjes op de kaart.
+
 ## Overige commando's
 
 - `npm run build`: maakt een versie om online te zetten in de map `dist/`

@@ -1,10 +1,11 @@
 // Gratis kaartdiensten op basis van OpenStreetMap.
 // Let op: deze openbare diensten zijn bedoeld voor licht gebruik (demo / eigen gebruik).
 // Voor een app met veel gebruikers is een eigen of betaalde dienst nodig.
-import { decodePolyline6 } from './geo';
+import { decodePolyline6, encodePolyline6, distance } from './geo';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const VALHALLA = 'https://valhalla1.openstreetmap.de/route';
+const VALHALLA_TRACE = 'https://valhalla1.openstreetmap.de/trace_attributes';
 // Knooppuntendienst (Overpass). Bij drukte of storing probeert de app de volgende server.
 const OVERPASS_SERVERS = [
   'https://overpass-api.de/api/interpreter',
@@ -163,6 +164,56 @@ async function overpass(query, signal) {
 }
 
 const bboxOf = (b) => `${b.south},${b.west},${b.north},${b.east}`;
+
+// Wegsoorten die we als "drukke weg" zien: oversteken daarvan is gevaarlijk
+const BUSY_ROADS = new Set(['motorway', 'trunk', 'primary', 'secondary']);
+
+// Gevaarlijke oversteken langs een route zoeken: plekken waar de route een drukke
+// weg kruist, terwijl de route zelf niet over die drukke weg gaat.
+// Geeft [{ lat, lng }]. Bij een fout een lege lijst (de route werkt dan gewoon).
+export async function fetchHazards(coords, vehicleType = 'scootmobiel') {
+  if (!coords || coords.length < 2) return [];
+  const profile = PROFILES[vehicleType] || PROFILES.scootmobiel;
+  const request = (shapeMatch) => fetch(VALHALLA_TRACE, {
+    method: 'POST',
+    // text/plain voorkomt een extra controle-aanvraag van de browser; Valhalla leest de JSON gewoon
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: JSON.stringify({
+      encoded_polyline: encodePolyline6(coords),
+      ...profile,
+      shape_match: shapeMatch,
+      filters: {
+        attributes: [
+          'edge.road_class', 'edge.use', 'edge.begin_shape_index', 'edge.end_shape_index',
+          'node.intersecting_edge.road_class', 'node.intersecting_edge.use', 'shape'
+        ],
+        action: 'include'
+      }
+    })
+  }).then((res) => (res.ok ? res.json() : null));
+
+  try {
+    const data = (await request('edge_walk').catch(() => null)) || (await request('map_snap'));
+    if (!data?.edges) return [];
+    const shape = data.shape ? decodePolyline6(data.shape) : coords;
+    const hazards = [];
+    data.edges.forEach((edge, i) => {
+      const next = data.edges[i + 1];
+      if (!next) return;
+      const crossesBusy = (edge.end_node?.intersecting_edges || [])
+        .some((x) => BUSY_ROADS.has(x.road_class) && (!x.use || x.use === 'road'));
+      const onBusyRoad = BUSY_ROADS.has(edge.road_class) || BUSY_ROADS.has(next.road_class);
+      const point = shape[edge.end_shape_index];
+      if (crossesBusy && !onBusyRoad && point) {
+        // Een drukke weg heeft vaak twee rijbanen: punten dicht bij elkaar samenvoegen
+        if (!hazards.some((h) => distance(h, point) < 60)) hazards.push({ lat: point.lat, lng: point.lng });
+      }
+    });
+    return hazards;
+  } catch (e) {
+    return [];
+  }
+}
 
 // Knooppunten die bij het online zetten zijn meegeleverd (public/knooppunten.json).
 // Eén keer laden; daarna wordt er alleen nog in het geheugen gezocht.
