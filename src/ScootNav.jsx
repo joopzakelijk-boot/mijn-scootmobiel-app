@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2 } from 'lucide-react';
 import RealMap from './RealMap';
+import Splash from './Splash';
 import { useLocation } from './useLocation';
 import { searchAddress, reverseGeocode, fetchRoute, fetchKnooppunten, fetchKnooppuntNetwerk, loadStaticKnooppunten, knooppuntenIn } from './services';
 import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, lowerFirst } from './geo';
@@ -76,6 +77,7 @@ const BigButton = ({ icon: Icon, label, onClick, color = "blue", fullWidth = fal
 
 export default function ScootNavApp() {
   const [view, setView] = useState('home'); // home, map, settings, sos
+  const [showSplash, setShowSplash] = useState(true);
   const [batteryLevel, setBatteryLevel] = useState(85);
   const [showExitModal, setShowExitModal] = useState(false);
 
@@ -1010,6 +1012,8 @@ export default function ScootNavApp() {
     <div className="h-screen w-full bg-slate-100 flex items-center justify-center font-sans">
       <div className="w-full max-w-md h-full sm:h-[90vh] sm:rounded-[30px] overflow-hidden bg-white shadow-2xl relative flex flex-col border-4 border-slate-800">
         
+        {showSplash && <Splash onDone={() => setShowSplash(false)} />}
+
         {/* Main Content Area */}
         <div className="flex-grow overflow-hidden relative">
           {view === 'home' && renderHome()}

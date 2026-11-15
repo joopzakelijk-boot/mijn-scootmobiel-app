@@ -33,3 +33,32 @@
   font: 800 12px/18px system-ui, sans-serif;
   text-align: center;
 }
+
+/* ---- Opstartscherm ---- */
+.splash {
+  background: radial-gradient(120% 80% at 50% 30%, #2563eb 0%, #1e40af 55%, #172554 100%);
+  transition: opacity 450ms ease;
+}
+.splash-leave { opacity: 0; }
+
+.splash-logo   { animation: splash-pop 700ms cubic-bezier(.2, 1.4, .4, 1) both; }
+.splash-title  { animation: splash-up 600ms 250ms ease-out both; }
+.splash-slogan { animation: splash-up 600ms 450ms ease-out both; }
+.splash-route  { animation: splash-up 500ms 650ms ease-out both; }
+.splash-hint   { animation: splash-fade 600ms 1400ms ease-out both; }
+.splash-rider  {
+  left: 2.5rem;
+  transform: translateY(-62%);
+  animation: splash-ride 1600ms 900ms ease-in-out both;
+}
+
+@keyframes splash-pop  { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes splash-up   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes splash-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes splash-ride { from { left: 2.5rem; } to { left: calc(100% - 5.25rem); } }
+
+/* Wie minder beweging wil, krijgt het scherm zonder animaties */
+@media (prefers-reduced-motion: reduce) {
+  .splash-logo, .splash-title, .splash-slogan, .splash-route, .splash-hint { animation: none; }
+  .splash-rider { animation: none; left: calc(50% - 1.375rem); }
+}
