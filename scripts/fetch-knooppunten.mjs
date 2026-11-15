@@ -62,6 +62,8 @@ if (nodes.length < 1000) {
   process.exit(0);
 }
 
+// Vaste volgorde, zodat er alleen een wijziging is als de knooppunten echt veranderen
+nodes.sort((a, b) => a[0] - b[0]);
 await mkdir('public', { recursive: true });
-await writeFile('public/knooppunten.json', JSON.stringify({ updated: new Date().toISOString(), nodes }));
+await writeFile('public/knooppunten.json', JSON.stringify({ nodes }));
 console.log(`${nodes.length} knooppunten opgeslagen in public/knooppunten.json`);

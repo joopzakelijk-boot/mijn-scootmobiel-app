@@ -218,15 +218,20 @@ export async function fetchHazards(coords, vehicleType = 'scootmobiel') {
 // Knooppunten die bij het online zetten zijn meegeleverd (public/knooppunten.json).
 // Eén keer laden; daarna wordt er alleen nog in het geheugen gezocht.
 let staticKnooppunten = null;
+let staticLoaded = null; // de geladen lijst, zodra die er is
 export async function loadStaticKnooppunten() {
   if (!staticKnooppunten) {
     staticKnooppunten = fetch(`${import.meta.env.BASE_URL}knooppunten.json`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => (data?.nodes || []).map(([id, ref, lat, lng]) => ({ id, ref, lat, lng })))
-      .catch(() => []);
+      .catch(() => [])
+      .then((list) => { staticLoaded = list; return list; });
   }
   return staticKnooppunten;
 }
+
+// Zijn de meegeleverde knooppunten al geladen? Dan kan zoeken direct, zonder wachten.
+export const staticKnooppuntenReady = () => Array.isArray(staticLoaded) && staticLoaded.length > 0;
 
 export const knooppuntenIn = (all, b) =>
   all.filter((n) => n.lat >= b.south && n.lat <= b.north && n.lng >= b.west && n.lng <= b.east);

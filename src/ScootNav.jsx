@@ -12,7 +12,7 @@ import Splash from './Splash';
 import Onboarding, { RANGE_MIN, RANGE_MAX } from './Onboarding';
 import BatteryPrompt from './BatteryPrompt';
 import { useLocation } from './useLocation';
-import { searchAddress, reverseGeocode, fetchRoute, fetchHazards, fetchKnooppunten, fetchKnooppuntNetwerk, loadStaticKnooppunten, knooppuntenIn } from './services';
+import { searchAddress, reverseGeocode, fetchRoute, fetchHazards, fetchKnooppunten, fetchKnooppuntNetwerk, loadStaticKnooppunten, staticKnooppuntenReady, knooppuntenIn } from './services';
 import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, lowerFirst } from './geo';
 
 // Instellingen worden in de browser bewaard (localStorage)
@@ -384,8 +384,13 @@ export default function ScootNavApp() {
   // en doet maar één aanvraag tegelijk (de gratis dienst weigert te veel aanvragen).
   const loadKnooppunten = () => {
     clearTimeout(kpTimer.current);
-    kpTimer.current = setTimeout(doLoadKnooppunten, KP_LOAD_DELAY_MS);
+    // Meegeleverde knooppunten zijn al in het geheugen: meteen tonen, niet wachten
+    if (staticKnooppuntenReady()) doLoadKnooppunten();
+    else kpTimer.current = setTimeout(doLoadKnooppunten, KP_LOAD_DELAY_MS);
   };
+
+  // De knooppunten al tijdens het opstartscherm inladen, zodat ze direct klaarstaan
+  useEffect(() => { loadStaticKnooppunten(); }, []);
 
   const doLoadKnooppunten = async () => {
     const v = mapView.current;
@@ -404,7 +409,7 @@ export default function ScootNavApp() {
     kpAbort.current?.abort(); // een oudere aanvraag die nog loopt is niet meer nodig
     const controller = new AbortController();
     kpAbort.current = controller;
-    setKpStatus('laden');
+    if (!staticKnooppuntenReady()) setKpStatus('laden');
     try {
       // Eerst de meegeleverde knooppunten; alleen als die er niet zijn, live ophalen
       const bundled = await loadStaticKnooppunten();

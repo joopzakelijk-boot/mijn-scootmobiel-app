@@ -27,8 +27,6 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Fietsknooppunten ophalen
-        run: node scripts/fetch-knooppunten.mjs
 
       - name: Webapp bouwen en in de Android-app zetten
         run: |
