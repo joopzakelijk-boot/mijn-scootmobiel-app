@@ -5,7 +5,13 @@ import { decodePolyline6 } from './geo';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const VALHALLA = 'https://valhalla1.openstreetmap.de/route';
-const OVERPASS = 'https://overpass-api.de/api/interpreter';
+// Knooppuntendienst (Overpass). Bij drukte of storing probeert de app de volgende server.
+const OVERPASS_SERVERS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter'
+];
+let overpassPreferred = 0; // de server die het laatst werkte, eerst proberen
 
 // Routeprofielen. De scootmobiel rijdt over fietspaden en rustige straten,
 // zonder trappen (die kan een fiets ook niet nemen), en vermijdt onverharde
@@ -133,30 +139,48 @@ export async function fetchRoute(points, vehicleType = 'scootmobiel') {
   };
 }
 
-// Fietsknooppunten en het knooppuntennetwerk binnen een gebied ophalen.
-// bounds: { south, west, north, east }
-export async function fetchKnooppunten(bounds) {
-  const bbox = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`;
-  const query = `[out:json][timeout:25];
-node["rcn_ref"](${bbox});
-out;
-relation["type"="route"]["network"="rcn"](${bbox});
-way(r)(${bbox});
-out geom;`;
-  const res = await fetch(OVERPASS, {
-    method: 'POST',
-    body: new URLSearchParams({ data: query })
-  });
-  if (!res.ok) throw new Error('Knooppunten laden lukt nu niet. Probeer het zo opnieuw.');
-  const data = await res.json();
-  const nodes = [];
-  const lines = [];
-  for (const el of data.elements) {
-    if (el.type === 'node' && el.tags?.rcn_ref) {
-      nodes.push({ id: el.id, ref: el.tags.rcn_ref, lat: el.lat, lng: el.lon });
-    } else if (el.type === 'way' && el.geometry) {
-      lines.push({ id: el.id, coords: el.geometry.map((g) => ({ lat: g.lat, lng: g.lon })) });
+async function overpass(query, signal) {
+  let lastError;
+  for (let i = 0; i < OVERPASS_SERVERS.length; i++) {
+    const index = (overpassPreferred + i) % OVERPASS_SERVERS.length;
+    try {
+      const res = await fetch(OVERPASS_SERVERS[index], {
+        method: 'POST',
+        body: new URLSearchParams({ data: query }),
+        signal
+      });
+      if (res.ok) {
+        overpassPreferred = index;
+        return await res.json();
+      }
+      lastError = new Error(`Server antwoordde met ${res.status}`);
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      lastError = e;
     }
   }
-  return { nodes, lines };
+  throw lastError || new Error('Knooppunten laden lukt nu niet.');
+}
+
+const bboxOf = (b) => `${b.south},${b.west},${b.north},${b.east}`;
+
+// Fietsknooppunten binnen een gebied: [{ id, ref, lat, lng }]
+// bounds: { south, west, north, east }
+export async function fetchKnooppunten(bounds, signal) {
+  const data = await overpass(`[out:json][timeout:20];node["rcn_ref"](${bboxOf(bounds)});out;`, signal);
+  return data.elements
+    .filter((el) => el.type === 'node' && el.tags?.rcn_ref)
+    .map((el) => ({ id: el.id, ref: el.tags.rcn_ref, lat: el.lat, lng: el.lon }));
+}
+
+// De groene lijnen van het knooppuntennetwerk binnen een gebied: [{ id, coords }]
+export async function fetchKnooppuntNetwerk(bounds, signal) {
+  const bbox = bboxOf(bounds);
+  const data = await overpass(
+    `[out:json][timeout:25];relation["type"="route"]["network"="rcn"](${bbox});way(r)(${bbox});out geom;`,
+    signal
+  );
+  return data.elements
+    .filter((el) => el.type === 'way' && el.geometry)
+    .map((el) => ({ id: el.id, coords: el.geometry.map((g) => ({ lat: g.lat, lng: g.lon })) }));
 }
