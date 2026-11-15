@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2 } from 'lucide-react';
 import RealMap from './RealMap';
 import { useLocation } from './useLocation';
-import { searchAddress, reverseGeocode, fetchRoute, fetchKnooppunten, fetchKnooppuntNetwerk } from './services';
+import { searchAddress, reverseGeocode, fetchRoute, fetchKnooppunten, fetchKnooppuntNetwerk, loadStaticKnooppunten, knooppuntenIn } from './services';
 import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, lowerFirst } from './geo';
 
 // Instellingen worden in de browser bewaard (localStorage)
@@ -218,10 +218,11 @@ export default function ScootNavApp() {
   const [kpSelected, setKpSelected] = useState([]);
   const [kpStartAtMe, setKpStartAtMe] = useState(true);
   const [kpRoundTrip, setKpRoundTrip] = useState(false);
-  const [kpStatus, setKpStatus] = useState(''); // '', 'zoom', 'laden', 'fout'
+  const [kpStatus, setKpStatus] = useState(''); // '', 'zoom', 'laden', 'leeg', 'fout'
   const mapView = useRef(null);
   const kpLoaded = useRef(null);
 
+  const [kpError, setKpError] = useState('');
   const kpTimer = useRef(null);
   const kpAbort = useRef(null);
 
@@ -251,7 +252,11 @@ export default function ScootNavApp() {
     kpAbort.current = controller;
     setKpStatus('laden');
     try {
-      const nodes = await fetchKnooppunten(area, controller.signal);
+      // Eerst de meegeleverde knooppunten; alleen als die er niet zijn, live ophalen
+      const bundled = await loadStaticKnooppunten();
+      const nodes = bundled.length
+        ? knooppuntenIn(bundled, area)
+        : await fetchKnooppunten(area, controller.signal);
       // Samenvoegen met wat al geladen was, zodat bordjes niet verdwijnen bij schuiven
       setKpNodes((old) => {
         const byId = new Map(old.map((n) => [n.id, n]));
@@ -261,7 +266,10 @@ export default function ScootNavApp() {
       kpLoaded.current = area;
       setKpStatus(nodes.length ? '' : 'leeg');
     } catch (e) {
-      if (e.name !== 'AbortError') setKpStatus('fout');
+      if (e.name !== 'AbortError') {
+        setKpError(e.message || String(e));
+        setKpStatus('fout');
+      }
       return;
     }
     // Daarna de groene lijnen; als dat mislukt, werken de knooppunten gewoon
@@ -771,7 +779,7 @@ export default function ScootNavApp() {
             {kpStatus === 'laden' && <><Loader2 size={20} className="animate-spin" /> Knooppunten laden…</>}
             {kpStatus === 'zoom' && 'Zoom verder in om de knooppunten te zien.'}
             {kpStatus === 'leeg' && 'Hier zijn geen knooppunten gevonden. Schuif de kaart of zoom iets uit.'}
-            {kpStatus === 'fout' && <span>De knooppuntendienst is nu druk of niet bereikbaar. <button onClick={() => { kpLoaded.current = null; doLoadKnooppunten(); }} className="underline text-blue-700">Opnieuw proberen</button></span>}
+            {kpStatus === 'fout' && <span>De knooppuntendienst is nu druk of niet bereikbaar. <span className="block text-xs font-normal text-slate-500">({kpError})</span> <button onClick={() => { kpLoaded.current = null; doLoadKnooppunten(); }} className="underline text-blue-700">Opnieuw proberen</button></span>}
           </div>
         )}
         {!follow && position && (
