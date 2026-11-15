@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2, ChevronRight, Clock, Octagon, ArrowLeft, Accessibility, ShieldAlert, Volume2, Type, Bike, Sparkles } from 'lucide-react';
+import { Battery, Navigation, AlertTriangle, Settings, Home, MapPin, Phone, Minus, Plus, Search, User, LocateFixed, X, MessageSquare, Play, Loader2, ChevronRight, Clock, Octagon, ArrowLeft, Accessibility, ShieldAlert, Volume2, Type, Bike, Sparkles, Gauge, HelpCircle } from 'lucide-react';
 import logo from './assets/logo.svg';
 import RealMap from './RealMap';
 import Splash from './Splash';
+import Onboarding, { RANGE_MIN, RANGE_MAX } from './Onboarding';
+import BatteryPrompt from './BatteryPrompt';
 import { useLocation } from './useLocation';
 import { searchAddress, reverseGeocode, fetchRoute, fetchHazards, fetchKnooppunten, fetchKnooppuntNetwerk, loadStaticKnooppunten, knooppuntenIn } from './services';
 import { distance, distanceToRoute, pointAlongRoute, formatDistance, spokenDistance, lowerFirst } from './geo';
@@ -17,7 +19,10 @@ const DEFAULT_SETTINGS = {
   contactPhone: "06-12345678",
   textScale: 1,
   voiceEnabled: true,
-  vehicleType: 'scootmobiel'
+  vehicleType: 'scootmobiel',
+  fullRangeKm: 40,     // hoe ver de scootmobiel komt met een volle accu
+  batteryLevel: 85,    // laatst opgegeven accustand (voorstel bij de volgende start)
+  introSeen: false     // uitleg al bekeken?
 };
 
 // Gemiddelde rijsnelheid (km/u) voor de verwachte reistijd
@@ -176,8 +181,8 @@ const RowIcon = ({ icon: Icon, tone = 'brand' }) => (
 
 export default function ScootNavApp() {
   const [view, setView] = useState('home'); // home, map, settings, sos
-  const [showSplash, setShowSplash] = useState(true);
-  const [batteryLevel, setBatteryLevel] = useState(85);
+  // Opstarten: opstartscherm -> uitleg (alleen de eerste keer) -> accuvraag -> app
+  const [stage, setStage] = useState('splash'); // 'splash' | 'intro' | 'battery' | 'app'
   const [showExitModal, setShowExitModal] = useState(false);
 
   // Persoonlijke instellingen (worden bewaard in de browser)
@@ -188,6 +193,17 @@ export default function ScootNavApp() {
   const [textScale, setTextScale] = useState(saved.textScale);
   const [voiceEnabled, setVoiceEnabled] = useState(saved.voiceEnabled);
   const [vehicleType, setVehicleType] = useState(saved.vehicleType);
+  const [fullRangeKm, setFullRangeKm] = useState(saved.fullRangeKm);
+  const [introSeen, setIntroSeen] = useState(saved.introSeen);
+  const [batteryLevel, setBatteryLevel] = useState(saved.batteryLevel);
+
+  // Bereik in km bij de huidige accustand
+  const rangeKm = (batteryLevel / 100) * fullRangeKm;
+
+  const openBatteryPrompt = () => {
+    setBatteryLevel((b) => Math.round(b / 5) * 5);
+    setStage('battery');
+  };
 
   // Locatie, zoeken en route
   const gps = useLocation();
@@ -208,16 +224,32 @@ export default function ScootNavApp() {
   const position = demo ? demoPos : gps.position;
   const speed = isNavigating && position ? Math.round(demo ? DEMO_SPEED[vehicleType] : (position.speed || 0)) : 0;
 
+  // Accu: er is (nog) geen koppeling met de scootmobiel, dus dit is een schatting.
+  // Onderweg loopt de accu terug naar rato van de gereden afstand:
+  // een volle accu (100%) is op na het bereik dat u bij Instellingen opgaf.
+  const lastBatteryPos = useRef(null);
+  useEffect(() => {
+    if (!isNavigating || !position) { lastBatteryPos.current = null; return; }
+    const prev = lastBatteryPos.current;
+    lastBatteryPos.current = position;
+    if (!prev) return;
+    const meters = distance(prev, position);
+    if (meters > 0 && meters < 200) { // grote sprongen zijn GPS-fouten, niet meetellen
+      setBatteryLevel((b) => Math.max(0, b - (meters / 1000 / fullRangeKm) * 100));
+    }
+  }, [position, isNavigating]);
+
   // Instellingen automatisch bewaren bij elke wijziging
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType
+        homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType,
+        fullRangeKm, introSeen, batteryLevel: Math.round(batteryLevel)
       }));
     } catch (e) {
       // Opslag niet beschikbaar (bijv. privévenster): app werkt gewoon door
     }
-  }, [homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType]);
+  }, [homeAddress, contactName, contactPhone, textScale, voiceEnabled, vehicleType, fullRangeKm, introSeen, Math.round(batteryLevel)]);
 
   // Tekstgrootte: alle Tailwind-maten zijn in rem, dus de basisgrootte schaalt alles mee
   useEffect(() => {
@@ -254,12 +286,6 @@ export default function ScootNavApp() {
     }
   };
 
-  // Accu: er is (nog) geen koppeling met de scootmobiel, dus dit is een schatting
-  useEffect(() => {
-    if (!isNavigating) return;
-    const id = setInterval(() => setBatteryLevel(prev => Math.max(0, prev - 0.1)), 3000);
-    return () => clearInterval(id);
-  }, [isNavigating]);
 
   // Vertrekpunt: de eigen locatie, of het thuisadres als de locatie onbekend is
   const getStart = async () => {
@@ -460,7 +486,6 @@ export default function ScootNavApp() {
     : null;
 
   // Accu: past de route binnen het bereik?
-  const rangeKm = batteryLevel * 0.4;
   const batteryCheck = (meters, roundTrip) => {
     const km = meters / 1000;
     const fmt = (x) => x.toFixed(1).replace('.', ',');
@@ -661,7 +686,11 @@ export default function ScootNavApp() {
 
         <h2 className="relative mt-6 font-display text-3xl font-extrabold tracking-tight">{greeting()}!</h2>
 
-        <div className="relative mt-4 rounded-2xl bg-white/10 border border-white/15 p-4 backdrop-blur-sm">
+        <button
+          onClick={openBatteryPrompt}
+          aria-label="Accustand aanpassen"
+          className="relative mt-4 w-full text-left rounded-2xl bg-white/10 border border-white/15 p-4 backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.99]"
+        >
           <div className="flex items-end justify-between">
             <div className="flex items-center gap-2">
               <Battery size={24} className={batteryLevel < 20 ? 'text-red-300' : 'text-emerald-300'} />
@@ -670,13 +699,14 @@ export default function ScootNavApp() {
             </div>
             <div className="text-right">
               <div className="text-xs uppercase tracking-wider text-brand-200 font-semibold">Bereik</div>
-              <div className="font-display text-lg font-bold tabular-nums">± {Math.floor(batteryLevel * 0.4)} km</div>
+              <div className="font-display text-lg font-bold tabular-nums">± {Math.floor(rangeKm)} km</div>
             </div>
           </div>
           <div className="mt-3 h-2.5 rounded-full bg-white/15 overflow-hidden" aria-hidden="true">
             <div className={`h-full rounded-full ${batteryColor}`} style={{ width: `${Math.max(3, batteryLevel)}%` }}></div>
           </div>
-        </div>
+          <div className="mt-2 text-xs font-semibold text-brand-200">Tik om de accustand aan te passen</div>
+        </button>
 
         <div className={`relative mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ${gps.status === 'ok' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-400/15 text-amber-200'}`}>
           <LocateFixed size={16} />
@@ -1114,6 +1144,39 @@ export default function ScootNavApp() {
             </div>
          </SettingsGroup>
 
+         <SettingsGroup title="Accu">
+            <div className="p-4 flex items-center gap-3">
+              <RowIcon icon={Battery} tone="green" />
+              <div className="flex-grow min-w-0">
+                <span className="block font-semibold text-ink">Bereik met volle accu</span>
+                <span className="block text-slate-500 text-sm">Hoe ver komt u op één lading?</span>
+              </div>
+              <div className="flex items-center rounded-xl bg-slate-100 p-1">
+                <button
+                  onClick={() => setFullRangeKm(Math.max(RANGE_MIN, fullRangeKm - 5))}
+                  disabled={fullRangeKm <= RANGE_MIN}
+                  aria-label="Bereik 5 km minder"
+                  className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center active:scale-95 disabled:opacity-40 transition"
+                ><Minus size={18}/></button>
+                <span className="w-16 text-center font-bold tabular-nums text-ink">{fullRangeKm} km</span>
+                <button
+                  onClick={() => setFullRangeKm(Math.min(RANGE_MAX, fullRangeKm + 5))}
+                  disabled={fullRangeKm >= RANGE_MAX}
+                  aria-label="Bereik 5 km meer"
+                  className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center active:scale-95 disabled:opacity-40 transition"
+                ><Plus size={18}/></button>
+              </div>
+            </div>
+            <button onClick={openBatteryPrompt} className="w-full p-4 flex items-center gap-3 text-left hover:bg-slate-50 transition rounded-b-3xl">
+              <RowIcon icon={Gauge} tone="green" />
+              <span className="flex-grow min-w-0">
+                <span className="block font-semibold text-ink">Accustand nu: {Math.round(batteryLevel)}%</span>
+                <span className="block text-slate-500 text-sm tabular-nums">Bereik ± {Math.floor(rangeKm)} km · tik om aan te passen</span>
+              </span>
+              <ChevronRight size={20} className="text-slate-300" />
+            </button>
+         </SettingsGroup>
+
          <SettingsGroup title="Vervoerstype">
             <div className="p-2 grid grid-cols-2 gap-2">
                {[['scootmobiel', 'Scootmobiel', Accessibility], ['fiets', 'Elektrische Fiets', Bike]].map(([value, label, Icon]) => (
@@ -1128,6 +1191,14 @@ export default function ScootNavApp() {
                  </button>
                ))}
             </div>
+         </SettingsGroup>
+
+         <SettingsGroup title="Hulp">
+            <button onClick={() => setStage('intro')} className="w-full p-4 flex items-center gap-3 text-left hover:bg-slate-50 transition rounded-3xl">
+              <RowIcon icon={HelpCircle} />
+              <span className="flex-grow font-semibold text-ink">Uitleg over de app opnieuw bekijken</span>
+              <ChevronRight size={20} className="text-slate-300" />
+            </button>
          </SettingsGroup>
 
          <BigButton
@@ -1149,7 +1220,22 @@ export default function ScootNavApp() {
     <div className="h-[100dvh] w-full bg-[#e6ebf3] flex items-center justify-center font-sans text-ink antialiased">
       <div className="w-full max-w-md h-full sm:h-[92vh] sm:max-h-[920px] sm:rounded-[2.75rem] sm:border-[10px] sm:border-slate-900 overflow-hidden bg-canvas sm:shadow-2xl relative flex flex-col">
 
-        {showSplash && <Splash onDone={() => setShowSplash(false)} />}
+        {stage === 'splash' && <Splash onDone={() => setStage(introSeen ? 'battery' : 'intro')} />}
+        {stage === 'intro' && (
+          <Onboarding
+            fullRangeKm={fullRangeKm}
+            setFullRangeKm={setFullRangeKm}
+            onDone={() => { setIntroSeen(true); setStage('battery'); }}
+          />
+        )}
+        {stage === 'battery' && (
+          <BatteryPrompt
+            level={Math.round(batteryLevel)}
+            setLevel={setBatteryLevel}
+            fullRangeKm={fullRangeKm}
+            onDone={() => setStage('app')}
+          />
+        )}
 
         {/* Main Content Area */}
         <div className="flex-grow overflow-hidden relative">
