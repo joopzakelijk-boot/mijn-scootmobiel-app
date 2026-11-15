@@ -494,12 +494,23 @@ export default function ScootNavApp() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 flex-grow">
+      <div className="grid grid-cols-2 gap-4">
         <BigButton icon={MapPin} label="Nieuwe Rit" onClick={() => setView('map')} color="blue" />
         <BigButton icon={Home} label="Naar Huis" onClick={goHome} color="green" disabled={isNavigating} />
         <BigButton icon={Settings} label="Instellingen" onClick={() => setView('settings')} color="gray" />
         <BigButton icon={AlertTriangle} label="NOODKNOP" onClick={() => setView('sos')} color="red" />
       </div>
+      <button
+        onClick={openKnooppunten}
+        disabled={isNavigating}
+        className="w-full bg-green-700 hover:bg-green-800 text-white p-4 rounded-xl shadow-md active:scale-95 transition-transform flex items-center gap-4 disabled:opacity-50"
+      >
+        <span className="kp-icon shrink-0" aria-hidden="true">12</span>
+        <span className="text-left">
+          <span className="block text-lg font-bold">Knooppuntroute maken</span>
+          <span className="block text-sm text-green-100">Tik zelf de fietsknooppunten aan</span>
+        </span>
+      </button>
     </div>
   );
 
@@ -509,6 +520,14 @@ export default function ScootNavApp() {
     setResults(null);
     // Knooppunten liggen kilometers uit elkaar: kaart iets uitzoomen en niet meer volgen
     if (mode === 'knooppunt') setFollow(false);
+  };
+
+  // Vanaf het startscherm direct naar het plannen met knooppunten
+  const openKnooppunten = () => {
+    setRoute(null);
+    setDestination(null);
+    switchPlanMode('knooppunt');
+    setView('map');
   };
 
   const Toggle = ({ id, checked, onChange, label }) => (
