@@ -87,21 +87,37 @@ const browser = await chromium.launch();
   await page.locator('.leaflet-marker-icon .kp-icon').first().waitFor({ timeout: 30000 });
   await tilesLoaded(page);
 
-  // Drie knooppunten in de buurt kiezen, met de klok mee rond het midden van de kaart
+  // Drie verschillende knooppunten in de buurt kiezen, met de klok mee rond het midden
   const markers = page.locator('.leaflet-marker-icon:has(.kp-icon)');
-  const boxes = await markers.evaluateAll((els) =>
-    els.map((el, i) => { const r = el.getBoundingClientRect(); return { i, x: r.x + r.width / 2, y: r.y + r.height / 2 }; }));
-  const cx = 180, cy = 210;
-  const visible = boxes.filter((b) => b.y > 90 && b.y < 320 && b.x > 30 && b.x < 330);
-  // Bordjes die vrijwel op elkaar liggen (beide kanten van de weg) maar één keer meetellen
-  const unique = visible.filter((b, k) => !visible.slice(0, k).some((o) => Math.hypot(o.x - b.x, o.y - b.y) < 24));
-  let pick = unique.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy)).slice(0, 3)
-    .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-  if (pick.length < 2) pick = boxes.slice(0, 3);
-  for (const b of pick) await markers.nth(b.i).click({ force: true });
-  await page.waitForFunction(() => !document.querySelector('button[disabled]')?.textContent?.includes('Bereken route'), null, { timeout: 5000 })
-    .catch(() => console.warn('Knooppunten kiezen lukte niet goed'));
-  console.log('Gekozen knooppunten:', pick.length);
+  const cx = 160, cy = 165;
+  const choose = async () => {
+    const boxes = await markers.evaluateAll((els) => els.map((el, i) => {
+      const r = el.getBoundingClientRect();
+      return { i, ref: el.textContent.trim(), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }));
+    // Alleen bordjes in het zichtbare kaartdeel, niet onder de knoppen of het paneel
+    const inView = boxes.filter((b) => b.y > 80 && b.y < 240 && b.x > 30 && b.x < 290)
+      .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
+    const pick = [];
+    for (const b of inView) {
+      if (pick.length === 3) break;
+      if (pick.some((p) => p.ref === b.ref || Math.hypot(p.x - b.x, p.y - b.y) < 50)) continue;
+      pick.push(b);
+    }
+    return pick;
+  };
+  let pick = await choose();
+  for (let stap = 0; stap < 2 && pick.length < 3; stap++) {
+    // Te weinig bordjes in beeld: een stapje uitzoomen
+    await page.locator('.leaflet-container').focus();
+    await page.keyboard.press('-');
+    await wait(2000);
+    pick = await choose();
+  }
+  pick.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  // Via een klik-gebeurtenis op het bordje zelf (een gewone klik laat de kaart verschuiven)
+  for (const b of pick) await markers.nth(b.i).evaluate((el) => el.click());
+  console.log('Gekozen knooppunten:', pick.map((p) => p.ref).join(' → '));
   await page.getByRole('switch', { name: 'Rondrit: terug naar start' }).click();
   await shot(page, '2-knooppunten-kiezen');
 

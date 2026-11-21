@@ -6,6 +6,7 @@
 // met meerdere pogingen. Lukt één stuk niet, dan wordt er niets geschreven,
 // zodat er nooit een half bestand ontstaat.
 import { writeFile, mkdir } from 'node:fs/promises';
+import { samenvoegen } from './knooppunten-samenvoegen.mjs';
 
 const SERVERS = [
   'https://overpass-api.de/api/interpreter',
@@ -72,7 +73,8 @@ for (const [i, tile] of TILES.entries()) {
   }
 }
 
-const nodes = [...byId.values()];
+// Dubbele bordjes (zelfde nummer, vlak bij elkaar) samenvoegen tot één
+const nodes = samenvoegen([...byId.values()]);
 if (nodes.length < 1000) {
   console.warn(`::warning::Maar ${nodes.length} knooppunten gevonden; bestand niet geschreven.`);
   process.exit(0);
