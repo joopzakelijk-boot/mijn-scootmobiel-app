@@ -1,8 +1,8 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "io.github.joopzakelijkboot.scootnav"
-    compileSdk rootProject.ext.compileSdkVersion
+    namespace = "io.github.joopzakelijkboot.scootnav"
+    compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "io.github.joopzakelijkboot.scootnav"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -14,18 +14,27 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // Vaste handtekening voor het zelf installeren van de APK. Zo kunnen nieuwe versies
-    // over de oude heen worden geïnstalleerd. NIET gebruiken voor de Google Play Store:
-    // daarvoor komt een eigen, geheime sleutel.
     signingConfigs {
+        // Voor de APK om zelf te installeren. Deze sleutel staat openbaar in de repository,
+        // dus NIET gebruiken voor de Play Store.
         sideload {
             storeFile file('scootnav-sideload.keystore')
             storePassword 'scootnav'
             keyAlias 'scootnav'
             keyPassword 'scootnav'
+        }
+        // Voor de Google Play Store: de geheime uploadsleutel. Die komt alleen via
+        // GitHub-geheimen binnen (PLAY_KEYSTORE_FILE en PLAY_KEYSTORE_PASSWORD).
+        if (System.getenv("PLAY_KEYSTORE_FILE")) {
+            play {
+                storeFile file(System.getenv("PLAY_KEYSTORE_FILE"))
+                storePassword System.getenv("PLAY_KEYSTORE_PASSWORD")
+                keyAlias 'upload'
+                keyPassword System.getenv("PLAY_KEYSTORE_PASSWORD")
+            }
         }
     }
     buildTypes {
@@ -33,7 +42,7 @@ android {
             signingConfig signingConfigs.sideload
         }
         release {
-            signingConfig signingConfigs.sideload
+            signingConfig System.getenv("PLAY_KEYSTORE_FILE") ? signingConfigs.play : signingConfigs.sideload
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

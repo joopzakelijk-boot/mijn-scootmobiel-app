@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Fietsknooppunten ophalen
         run: node scripts/fetch-knooppunten.mjs
@@ -47,4 +47,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Fietsknooppunten bijwerken"
+          git pull --rebase --autostash
           git push

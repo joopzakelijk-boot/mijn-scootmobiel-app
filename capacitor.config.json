@@ -2,7 +2,13 @@
   "appId": "io.github.joopzakelijkboot.scootnav",
   "appName": "ScootNav",
   "webDir": "dist",
+  "appendUserAgent": "ScootNav/1.0 (+https://github.com/joopzakelijk-boot/mijn-scootmobiel-app)",
   "android": {
     "backgroundColor": "#1e40af"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css"
+    }
   }
 }
