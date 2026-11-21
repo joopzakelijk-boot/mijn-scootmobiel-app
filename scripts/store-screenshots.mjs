@@ -88,13 +88,20 @@ const browser = await chromium.launch();
   await tilesLoaded(page);
 
   // Drie knooppunten in de buurt kiezen, met de klok mee rond het midden van de kaart
-  const boxes = await page.locator('.leaflet-marker-icon:has(.kp-icon)').evaluateAll((els) =>
+  const markers = page.locator('.leaflet-marker-icon:has(.kp-icon)');
+  const boxes = await markers.evaluateAll((els) =>
     els.map((el, i) => { const r = el.getBoundingClientRect(); return { i, x: r.x + r.width / 2, y: r.y + r.height / 2 }; }));
-  const cx = 180, cy = 230;
-  const visible = boxes.filter((b) => b.y > 90 && b.y < 330 && b.x > 30 && b.x < 330);
-  const near = visible.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy)).slice(0, 3)
+  const cx = 180, cy = 210;
+  const visible = boxes.filter((b) => b.y > 90 && b.y < 320 && b.x > 30 && b.x < 330);
+  // Bordjes die vrijwel op elkaar liggen (beide kanten van de weg) maar één keer meetellen
+  const unique = visible.filter((b, k) => !visible.slice(0, k).some((o) => Math.hypot(o.x - b.x, o.y - b.y) < 24));
+  let pick = unique.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy)).slice(0, 3)
     .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-  for (const b of near) await page.mouse.click(b.x, b.y);
+  if (pick.length < 2) pick = boxes.slice(0, 3);
+  for (const b of pick) await markers.nth(b.i).click({ force: true });
+  await page.waitForFunction(() => !document.querySelector('button[disabled]')?.textContent?.includes('Bereken route'), null, { timeout: 5000 })
+    .catch(() => console.warn('Knooppunten kiezen lukte niet goed'));
+  console.log('Gekozen knooppunten:', pick.length);
   await page.getByRole('switch', { name: 'Rondrit: terug naar start' }).click();
   await shot(page, '2-knooppunten-kiezen');
 
