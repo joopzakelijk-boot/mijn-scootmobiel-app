@@ -1251,7 +1251,14 @@ export default function ScootNavApp() {
   );
 
   return (
-    <div className="h-[100dvh] w-full bg-[#e6ebf3] flex items-center justify-center font-sans text-ink antialiased">
+    <div
+      className="h-[100dvh] w-full bg-[#e6ebf3] flex items-center justify-center font-sans text-ink antialiased"
+      // Ruimte voor de statusbalk en navigatiebalk van de telefoon (Android 15+ toont apps schermvullend)
+      style={{
+        paddingTop: 'var(--safe-area-inset-top, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))'
+      }}
+    >
       <div className="w-full max-w-md h-full sm:h-[92vh] sm:max-h-[920px] sm:rounded-[2.75rem] sm:border-[10px] sm:border-slate-900 overflow-hidden bg-canvas sm:shadow-2xl relative flex flex-col">
 
         {stage === 'splash' && <Splash onDone={() => setStage(introSeen ? 'battery' : 'intro')} />}

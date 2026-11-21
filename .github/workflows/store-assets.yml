@@ -1,0 +1,53 @@
+# Maakt schermafbeeldingen voor de Google Play Store met de echte kaart en routes,
+# en slaat ze op in store/screenshots/. Met de hand te starten (knop "Run workflow"),
+# en automatisch als het script wijzigt.
+name: Play Store-afbeeldingen maken
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/store-screenshots.mjs
+      - .github/workflows/store-assets.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: store-assets-${{ github.ref }}
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: App bouwen en starten
+        run: |
+          npm run build
+          npx vite preview --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+          sleep 3
+
+      - name: Browser installeren
+        run: |
+          npm i --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Schermafbeeldingen maken
+        run: node scripts/store-screenshots.mjs http://localhost:4173/ store/screenshots
+
+      - name: Opslaan in de repository
+        run: |
+          git add store/screenshots
+          if git diff --cached --quiet; then echo "Geen wijzigingen."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Play Store-schermafbeeldingen bijwerken"
+          git push

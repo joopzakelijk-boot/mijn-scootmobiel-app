@@ -1,7 +1,9 @@
-# Bouwt de Android-app (APK) en zet die klaar als download.
-# Op main: als "Release" op GitHub, met een vaste downloadlink naar de nieuwste versie.
-# Op andere branches: alleen als bijlage bij de bouw (om te testen).
-name: Android-app bouwen (APK)
+# Bouwt de Android-app:
+#  - ScootNav.apk: om zelf te installeren (vaste, openbare sideload-sleutel)
+#  - ScootNav.aab: voor de Google Play Store, ondertekend met de geheime uploadsleutel
+#    (alleen als de geheimen PLAY_KEYSTORE_BASE64 en PLAY_KEYSTORE_PASSWORD zijn ingesteld)
+# Op main komen beide als download bij een "Release" op GitHub.
+name: Android-app bouwen (APK en Play Store)
 
 on:
   push:
@@ -16,17 +18,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apk:
+  android:
     runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      HAS_PLAY_KEY: ${{ secrets.PLAY_KEYSTORE_BASE64 != '' && secrets.PLAY_KEYSTORE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-
 
       - name: Webapp bouwen en in de Android-app zetten
         run: |
@@ -36,21 +40,39 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
-      - name: APK bouwen
+      - name: APK bouwen (om zelf te installeren)
         working-directory: android
-        env:
-          VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk ../ScootNav.apk
 
+      - name: App-bundel bouwen voor de Play Store
+        if: env.HAS_PLAY_KEY == 'true'
+        working-directory: android
+        env:
+          PLAY_KEYSTORE_BASE64: ${{ secrets.PLAY_KEYSTORE_BASE64 }}
+          PLAY_KEYSTORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_PASSWORD }}
+        run: |
+          export PLAY_KEYSTORE_FILE="$RUNNER_TEMP/play-upload.jks"
+          echo "$PLAY_KEYSTORE_BASE64" | base64 --decode > "$PLAY_KEYSTORE_FILE"
+          ./gradlew bundleRelease --no-daemon --stacktrace
+          cp app/build/outputs/bundle/release/app-release.aab ../ScootNav.aab
+          rm -f "$PLAY_KEYSTORE_FILE"
+
+      - name: Geen Play Store-sleutel ingesteld
+        if: env.HAS_PLAY_KEY != 'true'
+        run: echo "::notice::Geen PLAY_KEYSTORE-geheimen ingesteld; alleen de APK is gebouwd."
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ScootNav-apk
-          path: ScootNav.apk
+          name: ScootNav-android
+          path: |
+            ScootNav.apk
+            ScootNav.aab
+          if-no-files-found: ignore
 
       - name: Als download klaarzetten (alleen main)
         if: github.ref == 'refs/heads/main'
@@ -59,7 +81,10 @@ jobs:
           tag_name: app-${{ github.run_number }}
           name: ScootNav voor Android (versie 1.0.${{ github.run_number }})
           make_latest: true
-          files: ScootNav.apk
+          fail_on_unmatched_files: false
+          files: |
+            ScootNav.apk
+            ScootNav.aab
           body: |
-            ScootNav voor Android. Installeren: download **ScootNav.apk** op je Android-telefoon en open het bestand.
-            Sta zo nodig "Installeren uit onbekende bronnen" toe voor je browser of bestandsbeheer.
+            **ScootNav.apk** — om zelf te installeren: download het bestand op je Android-telefoon en open het.
+            **ScootNav.aab** — voor de Google Play Store: uploaden in de Play Console (alleen aanwezig als de uploadsleutel is ingesteld).

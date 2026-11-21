@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacyverklaring ScootNav</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<style>
+  :root { --ink: #0f1b33; --muted: #475569; --brand: #1d43d8; --bg: #f2f5fa; --card: #ffffff; --line: #dbe3ef; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8eefb; --muted: #a9b6cc; --brand: #93b4fd; --bg: #0d1424; --card: #141d31; --line: #26334d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 2rem max(16px, env(safe-area-inset-left, 0px)) 3rem; }
+  header { display: flex; align-items: center; gap: .9rem; margin-bottom: 1.5rem; }
+  header img { width: 52px; height: 52px; border-radius: 14px; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0; }
+  h2 { font-size: 1.2rem; margin: 2rem 0 .4rem; }
+  p, li { color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: .4rem 1.3rem 1.2rem; margin-top: 1rem; }
+  a { color: var(--brand); }
+  .meta { font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="./icon-192.png" alt="">
+    <div>
+      <h1>Privacyverklaring ScootNav</h1>
+      <div class="meta">Laatst bijgewerkt: 21 november 2026</div>
+    </div>
+  </header>
+
+  <p>ScootNav is een navigatie-app voor scootmobielen ("Met de scoot van A naar B"). In deze verklaring staat welke gegevens de app gebruikt, waarvoor, en wat er níet gebeurt. Kort gezegd: de app heeft geen account, geen advertenties en geen eigen server, en er wordt niets over u verzameld om te bewaren.</p>
+
+  <section>
+    <h2>1. Uw locatie</h2>
+    <p>De app gebruikt de locatie van uw telefoon (GPS) om u op de kaart te tonen, een route te berekenen en u onderweg aanwijzingen te geven. De app vraagt hiervoor toestemming. U kunt die altijd intrekken in de instellingen van uw telefoon; de app werkt dan zonder eigen locatie (bijvoorbeeld met de demo-rit).</p>
+    <p>Om een route of adres te kunnen bepalen, stuurt de app de benodigde coördinaten naar de kaartdiensten hieronder (punt 4). Dat gebeurt alleen op het moment dat u een route plant, een adres zoekt of de noodknop opent. De app houdt geen geschiedenis van uw locaties bij.</p>
+  </section>
+
+  <section>
+    <h2>2. Gegevens die u zelf invult</h2>
+    <p>Uw thuisadres, de naam en het telefoonnummer van uw noodcontact, de accustand, het bereik van uw scootmobiel en uw instellingen (zoals tekstgrootte en spraak) worden alleen op uw eigen telefoon bewaard. Ze worden niet naar ons of naar anderen verstuurd.</p>
+    <p>Uitzondering: als u op "Naar Huis" tikt, wordt uw thuisadres naar de adreszoeker (punt 4) gestuurd om de plek op de kaart te vinden. Als u de noodknop gebruikt om te bellen of een sms te sturen, opent de app de telefoon- of berichten-app van uw toestel; u verstuurt dat bericht zelf.</p>
+  </section>
+
+  <section>
+    <h2>3. Wat de app níet doet</h2>
+    <ul>
+      <li>Geen account of inloggen.</li>
+      <li>Geen advertenties en geen advertentie-ID.</li>
+      <li>Geen analyse- of volgdiensten (zoals Google Analytics).</li>
+      <li>Geen verkoop of doorgifte van gegevens voor marketing.</li>
+      <li>Geen eigen server die uw gegevens opslaat.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Kaartdiensten die de app gebruikt</h2>
+    <p>Voor de kaart, het zoeken van adressen en het berekenen van routes gebruikt de app openbare diensten op basis van OpenStreetMap. Zij ontvangen bij gebruik uw IP-adres en de gevraagde gegevens (zoals een kaartgebied, zoekterm of coördinaten):</p>
+    <ul>
+      <li>Kaarttegels: OpenStreetMap Foundation (tile.openstreetmap.org) — <a href="https://osmfoundation.org/wiki/Privacy_Policy">privacybeleid</a></li>
+      <li>Adressen zoeken: Nominatim (nominatim.openstreetmap.org), OpenStreetMap Foundation — <a href="https://osmfoundation.org/wiki/Privacy_Policy">privacybeleid</a></li>
+      <li>Routes en drukke oversteken: Valhalla-routeplanner van FOSSGIS e.V. (valhalla1.openstreetmap.de) — <a href="https://www.fossgis.de/datenschutzerklaerung/">privacybeleid</a></li>
+      <li>Lijnen van het fietsknooppuntennetwerk: Overpass API (onder meer overpass-api.de)</li>
+    </ul>
+    <p>Gesproken aanwijzingen worden gemaakt door de spraakfunctie van uw eigen telefoon.</p>
+  </section>
+
+  <section>
+    <h2>5. Bewaren en verwijderen</h2>
+    <p>Omdat alles op uw telefoon staat, verwijdert u al uw gegevens door de app te verwijderen of de app-gegevens te wissen in de instellingen van uw telefoon.</p>
+  </section>
+
+  <section>
+    <h2>6. Kinderen</h2>
+    <p>De app is bedoeld voor volwassenen en niet gericht op kinderen.</p>
+  </section>
+
+  <section>
+    <h2>7. Contact</h2>
+    <p>Vragen over deze privacyverklaring? Stel ze via <a href="https://github.com/joopzakelijk-boot/mijn-scootmobiel-app/issues">de projectpagina op GitHub</a>.</p>
+  </section>
+</main>
+</body>
+</html>
